@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Cerca" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F7F7F4</item>
+        <item name="android:navigationBarColor">#F7F7F4</item>
+        <item name="colorPrimary">#17324D</item>
+    </style>
+</resources>

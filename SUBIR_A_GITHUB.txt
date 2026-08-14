@@ -1,0 +1,11 @@
+SUBÍ TODO EL CONTENIDO DE ESTA CARPETA AL REPOSITORIO cerca-android.
+
+Debe quedar en la raíz:
+- app/
+- .github/
+- build.gradle.kts
+- settings.gradle.kts
+- gradle.properties
+
+Al hacer commit en main, GitHub Actions compila automáticamente el APK.
+Luego: Actions > Compilar APK Cerca > último run > Artifacts > Cerca-APK.

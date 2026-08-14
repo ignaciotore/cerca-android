@@ -2,103 +2,185 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
-    android:background="#F7F7F4">
+    android:background="#F8F6F0">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp"
-        android:gravity="center_horizontal">
+        android:padding="22dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="CERCA"
-            android:textColor="#17324D"
-            android:textSize="34sp"
-            android:textStyle="bold"
-            android:layout_marginTop="16dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Ayuda cuando la necesitás"
-            android:textColor="#445563"
-            android:textSize="19sp"
-            android:layout_marginBottom="18dp"/>
-
-        <EditText
-            android:id="@+id/name"
+        <LinearLayout
+            android:id="@+id/mainPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Nombre de la persona"
-            android:inputType="textPersonName"/>
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
 
-        <EditText
-            android:id="@+id/emergencyPhone"
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <Space
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"/>
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="H.E.L.P."
+                    android:textColor="#183650"
+                    android:textSize="38sp"
+                    android:textStyle="bold"
+                    android:gravity="center"/>
+
+                <Button
+                    android:id="@+id/settingsButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:text="⚙"
+                    android:textSize="22sp"
+                    android:contentDescription="Configuración"
+                    android:padding="0dp"/>
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ayuda inmediata cuando la necesitás"
+                android:textColor="#53616B"
+                android:textSize="19sp"
+                android:gravity="center"
+                android:layout_marginTop="8dp"/>
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Mantené apretado 3 segundos para pedir ayuda."
+                android:textColor="#263746"
+                android:textSize="20sp"
+                android:gravity="center"
+                android:paddingTop="46dp"
+                android:paddingBottom="20dp"/>
+
+            <Button
+                android:id="@+id/helpButton"
+                android:layout_width="300dp"
+                android:layout_height="300dp"
+                android:backgroundTint="#D72E2E"
+                android:text="PEDIR\nAYUDA"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="39sp"/>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Al activar H.E.L.P. se enviará tu ubicación a tus contactos y se iniciará la llamada de emergencia."
+                android:textColor="#70777C"
+                android:textSize="15sp"
+                android:gravity="center"
+                android:paddingTop="28dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/settingsPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Teléfono para llamada"
-            android:inputType="phone"/>
+            android:orientation="vertical"
+            android:visibility="gone">
 
-        <EditText
-            android:id="@+id/smsPhone"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Teléfono para SMS"
-            android:inputType="phone"/>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Configuración"
+                android:textColor="#183650"
+                android:textSize="30sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="8dp"/>
 
-        <Button
-            android:id="@+id/saveButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="GUARDAR DATOS"
-            android:textSize="18sp"
-            android:layout_marginTop="14dp"/>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Estos datos quedan guardados y no se muestran en la pantalla principal."
+                android:textColor="#66737C"
+                android:textSize="16sp"
+                android:gravity="center"
+                android:layout_marginBottom="18dp"/>
 
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Mantené apretado 3 segundos para pedir ayuda."
-            android:textSize="17sp"
-            android:textColor="#263746"
-            android:gravity="center"
-            android:padding="18dp"/>
+            <EditText
+                android:id="@+id/name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Nombre de la persona"
+                android:inputType="textPersonName"/>
 
-        <Button
-            android:id="@+id/helpButton"
-            android:layout_width="290dp"
-            android:layout_height="290dp"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#CF2E2E"
-            android:text="PEDIR\nAYUDA"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold"
-            android:textSize="38sp"/>
+            <EditText
+                android:id="@+id/emergencyPhone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Teléfono para llamada"
+                android:inputType="phone"/>
 
-        <Button
-            android:id="@+id/testSms"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="PROBAR SOLO SMS"
-            android:layout_marginTop="22dp"/>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Contactos que recibirán el SMS con ubicación"
+                android:textColor="#263746"
+                android:textStyle="bold"
+                android:textSize="17sp"
+                android:layout_marginTop="18dp"
+                android:layout_marginBottom="4dp"/>
 
-        <Button
-            android:id="@+id/testCall"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="PROBAR SOLO LLAMADA"
-            android:layout_marginTop="8dp"/>
+            <EditText
+                android:id="@+id/smsPhone1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Contacto SMS 1"
+                android:inputType="phone"/>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="MVP de prueba. Usá teléfonos personales hasta validar el funcionamiento."
-            android:textColor="#6A737B"
-            android:textSize="14sp"
-            android:gravity="center"
-            android:padding="16dp"/>
+            <EditText
+                android:id="@+id/smsPhone2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Contacto SMS 2 (opcional)"
+                android:inputType="phone"/>
+
+            <EditText
+                android:id="@+id/smsPhone3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Contacto SMS 3 (opcional)"
+                android:inputType="phone"/>
+
+            <EditText
+                android:id="@+id/smsPhone4"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Contacto SMS 4 (opcional)"
+                android:inputType="phone"/>
+
+            <Button
+                android:id="@+id/saveButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="GUARDAR CONFIGURACIÓN"
+                android:textSize="18sp"
+                android:layout_marginTop="22dp"/>
+
+            <Button
+                android:id="@+id/cancelSettingsButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="VOLVER"
+                android:layout_marginTop="8dp"/>
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

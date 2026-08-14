@@ -8,9 +8,9 @@
 
     <application
         android:allowBackup="true"
-        android:label="Cerca"
+        android:label="H.E.L.P."
         android:supportsRtl="true"
-        android:theme="@style/Theme.Cerca">
+        android:theme="@style/Theme.Help">
         <activity
             android:name=".MainActivity"
             android:exported="true">

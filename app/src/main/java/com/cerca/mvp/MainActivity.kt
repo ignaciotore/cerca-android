@@ -16,8 +16,10 @@ import android.os.Looper
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.view.MotionEvent
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -43,9 +45,14 @@ class MainActivity : AppCompatActivity() {
         Manifest.permission.ACCESS_COARSE_LOCATION
     )
 
+    private lateinit var mainPanel: LinearLayout
+    private lateinit var settingsPanel: LinearLayout
     private lateinit var name: EditText
     private lateinit var emergencyPhone: EditText
-    private lateinit var smsPhone: EditText
+    private lateinit var smsPhone1: EditText
+    private lateinit var smsPhone2: EditText
+    private lateinit var smsPhone3: EditText
+    private lateinit var smsPhone4: EditText
     private lateinit var status: TextView
 
     private val holdHandler = Handler(Looper.getMainLooper())
@@ -55,21 +62,24 @@ class MainActivity : AppCompatActivity() {
     private var expectedSmsParts = 0
     private var sentSmsParts = 0
     private var deliveredSmsParts = 0
-    private var smsFailed = false
+    private var failedSmsParts = 0
 
     private val smsSentReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
-            if (smsFailed) return
 
             if (resultCode == Activity.RESULT_OK) {
                 sentSmsParts++
-                if (sentSmsParts >= expectedSmsParts) {
-                    status.text = "SMS enviado por la red."
-                }
             } else {
-                smsFailed = true
-                status.text = "SMS NO enviado: ${smsErrorText(resultCode)}"
+                failedSmsParts++
+            }
+
+            if (sentSmsParts + failedSmsParts >= expectedSmsParts) {
+                status.text = if (failedSmsParts == 0) {
+                    "Alertas enviadas."
+                } else {
+                    "Se enviaron alertas, pero hubo $failedSmsParts error(es) de SMS."
+                }
             }
         }
     }
@@ -77,12 +87,10 @@ class MainActivity : AppCompatActivity() {
     private val smsDeliveredReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
-            if (smsFailed) return
-
             if (resultCode == Activity.RESULT_OK) {
                 deliveredSmsParts++
-                if (deliveredSmsParts >= expectedSmsParts) {
-                    status.text = "SMS entregado al contacto."
+                if (deliveredSmsParts >= expectedSmsParts && failedSmsParts == 0) {
+                    status.text = "Alertas entregadas a tus contactos."
                 }
             }
         }
@@ -92,9 +100,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        mainPanel = findViewById(R.id.mainPanel)
+        settingsPanel = findViewById(R.id.settingsPanel)
         name = findViewById(R.id.name)
         emergencyPhone = findViewById(R.id.emergencyPhone)
-        smsPhone = findViewById(R.id.smsPhone)
+        smsPhone1 = findViewById(R.id.smsPhone1)
+        smsPhone2 = findViewById(R.id.smsPhone2)
+        smsPhone3 = findViewById(R.id.smsPhone3)
+        smsPhone4 = findViewById(R.id.smsPhone4)
         status = findViewById(R.id.status)
 
         ContextCompat.registerReceiver(
@@ -110,22 +123,24 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.RECEIVER_EXPORTED
         )
 
+        migrateOldSettings()
         loadSettings()
         requestNeededPermissions()
 
+        findViewById<Button>(R.id.settingsButton).setOnClickListener {
+            loadSettings()
+            showSettings()
+        }
+
         findViewById<Button>(R.id.saveButton).setOnClickListener {
-            saveSettings()
-            Toast.makeText(this, "Datos guardados", Toast.LENGTH_SHORT).show()
+            if (saveSettings()) {
+                Toast.makeText(this, "Configuración guardada", Toast.LENGTH_SHORT).show()
+                showMain()
+            }
         }
 
-        findViewById<Button>(R.id.testSms).setOnClickListener {
-            saveSettings()
-            sendAlertSmsOnly()
-        }
-
-        findViewById<Button>(R.id.testCall).setOnClickListener {
-            saveSettings()
-            makeEmergencyCall()
+        findViewById<Button>(R.id.cancelSettingsButton).setOnClickListener {
+            if (hasMinimumConfiguration()) showMain()
         }
 
         val help = findViewById<Button>(R.id.helpButton)
@@ -136,8 +151,7 @@ class MainActivity : AppCompatActivity() {
                     status.text = "Seguí apretando..."
                     holdHandler.postDelayed({
                         holdTriggered = true
-                        saveSettings()
-                        triggerFullEmergency()
+                        triggerEmergency()
                     }, 3000)
                     true
                 }
@@ -153,41 +167,89 @@ class MainActivity : AppCompatActivity() {
                 else -> false
             }
         }
+
+        if (hasMinimumConfiguration()) showMain() else showSettings()
     }
 
     override fun onDestroy() {
-        try {
-            unregisterReceiver(smsSentReceiver)
-        } catch (_: Exception) {
-        }
-        try {
-            unregisterReceiver(smsDeliveredReceiver)
-        } catch (_: Exception) {
-        }
+        try { unregisterReceiver(smsSentReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(smsDeliveredReceiver) } catch (_: Exception) {}
         super.onDestroy()
     }
 
     private fun prefs() = getSharedPreferences("cerca", MODE_PRIVATE)
 
-    private fun loadSettings() {
-        name.setText(prefs().getString("name", ""))
-        emergencyPhone.setText(prefs().getString("emergencyPhone", ""))
-        smsPhone.setText(prefs().getString("smsPhone", ""))
+    private fun migrateOldSettings() {
+        val p = prefs()
+        if (p.getString("smsPhone1", "").isNullOrBlank()) {
+            val oldSms = p.getString("smsPhone", "") ?: ""
+            if (oldSms.isNotBlank()) {
+                p.edit().putString("smsPhone1", oldSms).apply()
+            }
+        }
     }
 
-    private fun saveSettings() {
+    private fun loadSettings() {
+        val p = prefs()
+        name.setText(p.getString("name", ""))
+        emergencyPhone.setText(p.getString("emergencyPhone", ""))
+        smsPhone1.setText(p.getString("smsPhone1", ""))
+        smsPhone2.setText(p.getString("smsPhone2", ""))
+        smsPhone3.setText(p.getString("smsPhone3", ""))
+        smsPhone4.setText(p.getString("smsPhone4", ""))
+    }
+
+    private fun saveSettings(): Boolean {
+        val person = name.text.toString().trim()
+        val callPhone = normalizePhone(emergencyPhone.text.toString())
+        val sms1 = normalizePhone(smsPhone1.text.toString())
+
+        if (person.isBlank()) {
+            Toast.makeText(this, "Ingresá el nombre", Toast.LENGTH_LONG).show()
+            return false
+        }
+        if (callPhone.isBlank()) {
+            Toast.makeText(this, "Ingresá el teléfono para llamada", Toast.LENGTH_LONG).show()
+            return false
+        }
+        if (sms1.isBlank()) {
+            Toast.makeText(this, "Ingresá al menos un contacto para SMS", Toast.LENGTH_LONG).show()
+            return false
+        }
+
         prefs().edit()
-            .putString("name", name.text.toString().trim())
-            .putString("emergencyPhone", emergencyPhone.text.toString().trim())
-            .putString("smsPhone", smsPhone.text.toString().trim())
+            .putString("name", person)
+            .putString("emergencyPhone", callPhone)
+            .putString("smsPhone1", sms1)
+            .putString("smsPhone2", normalizePhone(smsPhone2.text.toString()))
+            .putString("smsPhone3", normalizePhone(smsPhone3.text.toString()))
+            .putString("smsPhone4", normalizePhone(smsPhone4.text.toString()))
             .apply()
+        return true
+    }
+
+    private fun hasMinimumConfiguration(): Boolean {
+        val p = prefs()
+        return !p.getString("name", "").isNullOrBlank() &&
+                !p.getString("emergencyPhone", "").isNullOrBlank() &&
+                !p.getString("smsPhone1", "").isNullOrBlank()
+    }
+
+    private fun showMain() {
+        settingsPanel.visibility = View.GONE
+        mainPanel.visibility = View.VISIBLE
+        status.text = "Mantené apretado 3 segundos para pedir ayuda."
+    }
+
+    private fun showSettings() {
+        mainPanel.visibility = View.GONE
+        settingsPanel.visibility = View.VISIBLE
     }
 
     private fun requestNeededPermissions() {
         val missing = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-
         if (missing.isNotEmpty()) {
             ActivityCompat.requestPermissions(
                 this,
@@ -197,70 +259,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun triggerFullEmergency() {
+    private fun triggerEmergency() {
+        if (!hasMinimumConfiguration()) {
+            showSettings()
+            Toast.makeText(this, "Completá la configuración primero", Toast.LENGTH_LONG).show()
+            return
+        }
+
         if (!hasCorePermissions()) {
             status.text = "Necesito permisos de Teléfono, SMS y Ubicación."
             requestNeededPermissions()
             return
         }
 
-        status.text = "Obteniendo ubicación..."
+        status.text = "Activando H.E.L.P...."
+
         getLocation { mapsLink ->
-            val person = name.text.toString().trim().ifEmpty { "La persona" }
-            val destination = normalizePhone(smsPhone.text.toString())
+            val person = prefs().getString("name", "")?.ifBlank { "La persona" } ?: "La persona"
             val message = "$person necesita ayuda. Ubicacion: $mapsLink"
-
-            if (destination.isNotEmpty()) {
-                sendSmsWithRealStatus(destination, message)
-            } else {
-                status.text = "No hay teléfono para SMS. Iniciando llamada..."
-            }
-
-            Handler(Looper.getMainLooper()).postDelayed({
-                makeEmergencyCall()
-            }, 1200)
+            sendSmsToSavedContacts(message)
         }
+
+        makeEmergencyCall()
     }
 
-    private fun sendAlertSmsOnly() {
-        if (
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.SEND_SMS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            requestNeededPermissions()
-            return
-        }
-
-        val destination = normalizePhone(smsPhone.text.toString())
-        if (destination.isEmpty()) {
-            Toast.makeText(
-                this,
-                "Falta el teléfono para SMS",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        status.text = "Obteniendo ubicación..."
-        getLocation { mapsLink ->
-            val person = name.text.toString().trim().ifEmpty { "La persona" }
-            val message = "$person necesita ayuda. Ubicacion: $mapsLink"
-            sendSmsWithRealStatus(destination, message)
-        }
+    private fun savedSmsContacts(): List<String> {
+        val p = prefs()
+        return listOf(
+            p.getString("smsPhone1", "") ?: "",
+            p.getString("smsPhone2", "") ?: "",
+            p.getString("smsPhone3", "") ?: "",
+            p.getString("smsPhone4", "") ?: ""
+        ).map { normalizePhone(it) }.filter { it.isNotBlank() }.distinct()
     }
 
     @Suppress("DEPRECATION")
     private fun smsManagerForDefaultSim(): SmsManager? {
         val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
-
         if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            status.text =
-                "No hay una SIM predeterminada para SMS. Elegila en Ajustes > SIMs > SMS."
+            status.text = "Elegí una SIM predeterminada para SMS en Ajustes."
             return null
         }
-
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
         } else {
@@ -268,87 +307,83 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendSmsWithRealStatus(destination: String, message: String) {
+    private fun sendSmsToSavedContacts(message: String) {
         val smsManager = smsManagerForDefaultSim() ?: return
+        val contacts = savedSmsContacts()
+        if (contacts.isEmpty()) {
+            status.text = "No hay contactos SMS configurados."
+            return
+        }
 
         try {
-            val parts = smsManager.divideMessage(message)
             currentSmsBatch = System.currentTimeMillis()
-            expectedSmsParts = parts.size
+            expectedSmsParts = 0
             sentSmsParts = 0
             deliveredSmsParts = 0
-            smsFailed = false
+            failedSmsParts = 0
 
-            val sentIntents = ArrayList<PendingIntent>()
-            val deliveryIntents = ArrayList<PendingIntent>()
+            val allParts = contacts.map { destination ->
+                destination to smsManager.divideMessage(message)
+            }
+            expectedSmsParts = allParts.sumOf { it.second.size }
 
-            val baseRequestCode =
-                (currentSmsBatch xor (currentSmsBatch ushr 32)).toInt()
+            var requestCode = (currentSmsBatch xor (currentSmsBatch ushr 32)).toInt()
 
-            for (i in parts.indices) {
-                val sentIntent = Intent(ACTION_SMS_SENT)
-                    .setPackage(packageName)
-                    .putExtra(EXTRA_BATCH, currentSmsBatch)
+            allParts.forEach { (destination, parts) ->
+                val sentIntents = ArrayList<PendingIntent>()
+                val deliveryIntents = ArrayList<PendingIntent>()
 
-                val deliveredIntent = Intent(ACTION_SMS_DELIVERED)
-                    .setPackage(packageName)
-                    .putExtra(EXTRA_BATCH, currentSmsBatch)
+                for (i in parts.indices) {
+                    val sentIntent = Intent(ACTION_SMS_SENT)
+                        .setPackage(packageName)
+                        .putExtra(EXTRA_BATCH, currentSmsBatch)
 
-                val flags =
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    val deliveredIntent = Intent(ACTION_SMS_DELIVERED)
+                        .setPackage(packageName)
+                        .putExtra(EXTRA_BATCH, currentSmsBatch)
 
-                sentIntents.add(
-                    PendingIntent.getBroadcast(
-                        this,
-                        baseRequestCode + (i * 2),
-                        sentIntent,
-                        flags
+                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+
+                    sentIntents.add(
+                        PendingIntent.getBroadcast(
+                            this,
+                            requestCode++,
+                            sentIntent,
+                            flags
+                        )
                     )
-                )
-
-                deliveryIntents.add(
-                    PendingIntent.getBroadcast(
-                        this,
-                        baseRequestCode + (i * 2) + 1,
-                        deliveredIntent,
-                        flags
+                    deliveryIntents.add(
+                        PendingIntent.getBroadcast(
+                            this,
+                            requestCode++,
+                            deliveredIntent,
+                            flags
+                        )
                     )
-                )
+                }
+
+                if (parts.size == 1) {
+                    smsManager.sendTextMessage(
+                        destination,
+                        null,
+                        parts[0],
+                        sentIntents[0],
+                        deliveryIntents[0]
+                    )
+                } else {
+                    smsManager.sendMultipartTextMessage(
+                        destination,
+                        null,
+                        parts,
+                        sentIntents,
+                        deliveryIntents
+                    )
+                }
             }
 
-            status.text = "Enviando SMS..."
-
-            if (parts.size == 1) {
-                smsManager.sendTextMessage(
-                    destination,
-                    null,
-                    parts[0],
-                    sentIntents[0],
-                    deliveryIntents[0]
-                )
-            } else {
-                smsManager.sendMultipartTextMessage(
-                    destination,
-                    null,
-                    parts,
-                    sentIntents,
-                    deliveryIntents
-                )
-            }
+            status.text = "Alertando a ${contacts.size} contacto(s)..."
         } catch (e: Exception) {
-            smsFailed = true
-            status.text =
-                "Error al solicitar SMS: ${e.message ?: e.javaClass.simpleName}"
-        }
-    }
-
-    private fun smsErrorText(code: Int): String {
-        return when (code) {
-            SmsManager.RESULT_ERROR_GENERIC_FAILURE -> "fallo de la red"
-            SmsManager.RESULT_ERROR_RADIO_OFF -> "radio apagada"
-            SmsManager.RESULT_ERROR_NULL_PDU -> "error interno de SMS"
-            SmsManager.RESULT_ERROR_NO_SERVICE -> "sin servicio móvil"
-            else -> "código $code"
+            status.text = "No se pudieron enviar los SMS."
         }
     }
 
@@ -360,16 +395,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun makeEmergencyCall() {
-        val phone = normalizePhone(emergencyPhone.text.toString())
-
-        if (phone.isEmpty()) {
-            Toast.makeText(
-                this,
-                "Falta el teléfono para llamada",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
+        val phone = normalizePhone(prefs().getString("emergencyPhone", "") ?: "")
+        if (phone.isEmpty()) return
 
         if (
             ContextCompat.checkSelfPermission(
@@ -381,7 +408,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        status.text = "Llamando..."
         val intent = Intent(
             Intent.ACTION_CALL,
             Uri.fromParts("tel", phone, null)
@@ -403,11 +429,11 @@ class MainActivity : AppCompatActivity() {
                         this,
                         Manifest.permission.ACCESS_FINE_LOCATION
                     ) == PackageManager.PERMISSION_GRANTED ||
-                            ContextCompat.checkSelfPermission(
-                                this,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED
-                    )
+                    ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                )
     }
 
     private fun getLocation(callback: (String) -> Unit) {
@@ -437,15 +463,11 @@ class MainActivity : AppCompatActivity() {
         )
             .addOnSuccessListener { loc ->
                 if (loc != null) {
-                    callback(
-                        "https://maps.google.com/?q=${loc.latitude},${loc.longitude}"
-                    )
+                    callback("https://maps.google.com/?q=${loc.latitude},${loc.longitude}")
                 } else {
                     client.lastLocation.addOnSuccessListener { last ->
                         if (last != null) {
-                            callback(
-                                "https://maps.google.com/?q=${last.latitude},${last.longitude}"
-                            )
+                            callback("https://maps.google.com/?q=${last.latitude},${last.longitude}")
                         } else {
                             callback("Ubicacion no disponible")
                         }
@@ -455,9 +477,7 @@ class MainActivity : AppCompatActivity() {
             .addOnFailureListener {
                 client.lastLocation.addOnSuccessListener { last ->
                     if (last != null) {
-                        callback(
-                            "https://maps.google.com/?q=${last.latitude},${last.longitude}"
-                        )
+                        callback("https://maps.google.com/?q=${last.latitude},${last.longitude}")
                     } else {
                         callback("Ubicacion no disponible")
                     }

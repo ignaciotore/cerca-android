@@ -8,11 +8,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.ContactsContract
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.view.MotionEvent
@@ -28,77 +30,86 @@ import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
-import java.net.URLEncoder
 import java.security.MessageDigest
-import java.util.UUID
 import kotlin.math.ceil
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        private const val ACTION_SMS_SENT = "com.cerca.mvp.SMS_SENT"
-        private const val ACTION_SMS_DELIVERED = "com.cerca.mvp.SMS_DELIVERED"
-        private const val EXTRA_BATCH = "batch"
-
-        private const val PREFS = "cerca"
+        private const val PREFS = "help_prefs"
         private const val TRIAL_DAYS = 30L
         private const val DAY_MS = 24L * 60L * 60L * 1000L
 
-        private const val TRACKER_URL = "https://cerca-live-tracker.vercel.app/track"
-        private const val SUBSCRIBE_URL = "https://cerca-live-tracker.vercel.app/subscribe"
+        private const val REQ_CALL_CONTACT = 201
+        private const val REQ_SMS1_CONTACT = 202
+        private const val REQ_SMS2_CONTACT = 203
+        private const val REQ_SMS3_CONTACT = 204
+        private const val REQ_SMS4_CONTACT = 205
+        private const val REQ_PERMISSIONS = 301
+
+        private const val ACTION_SMS_SENT = "com.cerca.mvp.HELP_SMS_SENT"
+        private const val ACTION_SMS_DELIVERED = "com.cerca.mvp.HELP_SMS_DELIVERED"
+        private const val EXTRA_BATCH = "batch"
     }
 
-    private val permissionRequestCode = 99
-    private val notificationPermissionRequestCode = 100
-
-    private lateinit var registerPanel: LinearLayout
-    private lateinit var mainPanel: LinearLayout
+    private lateinit var setupPanel: LinearLayout
+    private lateinit var homePanel: LinearLayout
     private lateinit var profilePanel: LinearLayout
     private lateinit var expiredPanel: LinearLayout
 
-    private lateinit var registerTitle: TextView
-    private lateinit var registerSubtitle: TextView
-    private lateinit var registerButton: Button
-    private lateinit var cancelEditButton: Button
-
+    private lateinit var setupTitle: TextView
+    private lateinit var setupSubtitle: TextView
     private lateinit var name: EditText
     private lateinit var email: EditText
     private lateinit var password: EditText
     private lateinit var ownPhone: EditText
-    private lateinit var emergencyPhone: EditText
-    private lateinit var smsPhone1: EditText
-    private lateinit var smsPhone2: EditText
-    private lateinit var smsPhone3: EditText
-    private lateinit var smsPhone4: EditText
+    private lateinit var callPhoneManual: EditText
+
+    private lateinit var callContactDisplay: TextView
+    private lateinit var sms1Display: TextView
+    private lateinit var sms2Display: TextView
+    private lateinit var sms3Display: TextView
+    private lateinit var sms4Display: TextView
 
     private lateinit var trialBadge: TextView
     private lateinit var status: TextView
-    private lateinit var stopTrackingButton: Button
-
+    private lateinit var homeCallSummary: TextView
+    private lateinit var homeSmsSummary: TextView
     private lateinit var profileData: TextView
     private lateinit var subscriptionStatus: TextView
 
+    private var editingProfile = false
+
+    private var callName = ""
+    private var callPhone = ""
+    private var sms1Name = ""
+    private var sms1Phone = ""
+    private var sms2Name = ""
+    private var sms2Phone = ""
+    private var sms3Name = ""
+    private var sms3Phone = ""
+    private var sms4Name = ""
+    private var sms4Phone = ""
+
     private val holdHandler = Handler(Looper.getMainLooper())
     private var holdTriggered = false
-    private var editingProfile = false
 
     private var currentSmsBatch = -1L
     private var expectedSmsParts = 0
     private var sentSmsParts = 0
-    private var deliveredSmsParts = 0
     private var failedSmsParts = 0
+    private var deliveredSmsParts = 0
 
     private val smsSentReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
-
             if (resultCode == Activity.RESULT_OK) sentSmsParts++ else failedSmsParts++
 
             if (sentSmsParts + failedSmsParts >= expectedSmsParts && expectedSmsParts > 0) {
                 status.text = if (failedSmsParts == 0) {
-                    "Alerta enviada. La ubicación en vivo está activa."
+                    "Aviso enviado. Iniciando llamada…"
                 } else {
-                    "La emergencia se activó, pero hubo $failedSmsParts error(es) de SMS."
+                    "La llamada se realizará, pero hubo un problema con uno o más SMS."
                 }
             }
         }
@@ -107,11 +118,10 @@ class MainActivity : AppCompatActivity() {
     private val smsDeliveredReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
-
             if (resultCode == Activity.RESULT_OK) {
                 deliveredSmsParts++
-                if (deliveredSmsParts >= expectedSmsParts && failedSmsParts == 0 && expectedSmsParts > 0) {
-                    status.text = "Alerta entregada. Ubicación en vivo activa."
+                if (deliveredSmsParts >= expectedSmsParts && expectedSmsParts > 0 && failedSmsParts == 0) {
+                    status.text = "Tus contactos recibieron el aviso."
                 }
             }
         }
@@ -122,7 +132,48 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         bindViews()
+        migrateLegacyData()
+        loadContactState()
+        registerSmsReceivers()
+        setupActions()
+        showInitialScreen()
+    }
 
+    override fun onDestroy() {
+        try { unregisterReceiver(smsSentReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(smsDeliveredReceiver) } catch (_: Exception) {}
+        super.onDestroy()
+    }
+
+    private fun bindViews() {
+        setupPanel = findViewById(R.id.setupPanel)
+        homePanel = findViewById(R.id.homePanel)
+        profilePanel = findViewById(R.id.profilePanel)
+        expiredPanel = findViewById(R.id.expiredPanel)
+
+        setupTitle = findViewById(R.id.setupTitle)
+        setupSubtitle = findViewById(R.id.setupSubtitle)
+        name = findViewById(R.id.name)
+        email = findViewById(R.id.email)
+        password = findViewById(R.id.password)
+        ownPhone = findViewById(R.id.ownPhone)
+        callPhoneManual = findViewById(R.id.callPhoneManual)
+
+        callContactDisplay = findViewById(R.id.callContactDisplay)
+        sms1Display = findViewById(R.id.sms1Display)
+        sms2Display = findViewById(R.id.sms2Display)
+        sms3Display = findViewById(R.id.sms3Display)
+        sms4Display = findViewById(R.id.sms4Display)
+
+        trialBadge = findViewById(R.id.trialBadge)
+        status = findViewById(R.id.status)
+        homeCallSummary = findViewById(R.id.homeCallSummary)
+        homeSmsSummary = findViewById(R.id.homeSmsSummary)
+        profileData = findViewById(R.id.profileData)
+        subscriptionStatus = findViewById(R.id.subscriptionStatus)
+    }
+
+    private fun registerSmsReceivers() {
         ContextCompat.registerReceiver(
             this,
             smsSentReceiver,
@@ -135,81 +186,36 @@ class MainActivity : AppCompatActivity() {
             IntentFilter(ACTION_SMS_DELIVERED),
             ContextCompat.RECEIVER_EXPORTED
         )
-
-        migrateLegacyValues()
-        requestNeededPermissions()
-        handleSubscriptionIntent(intent)
-        setupActions()
-        showCorrectInitialScreen()
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleSubscriptionIntent(intent)
-        showCorrectInitialScreen()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (isRegistered()) {
-            updateTrialUi()
-            updateTrackingUi()
-            if (!canUseEmergency() && currentVisiblePanel() == "main") {
-                showExpired()
-            }
-        }
-    }
-
-    override fun onDestroy() {
-        try { unregisterReceiver(smsSentReceiver) } catch (_: Exception) {}
-        try { unregisterReceiver(smsDeliveredReceiver) } catch (_: Exception) {}
-        super.onDestroy()
-    }
-
-    private fun bindViews() {
-        registerPanel = findViewById(R.id.registerPanel)
-        mainPanel = findViewById(R.id.mainPanel)
-        profilePanel = findViewById(R.id.profilePanel)
-        expiredPanel = findViewById(R.id.expiredPanel)
-
-        registerTitle = findViewById(R.id.registerTitle)
-        registerSubtitle = findViewById(R.id.registerSubtitle)
-        registerButton = findViewById(R.id.registerButton)
-        cancelEditButton = findViewById(R.id.cancelEditButton)
-
-        name = findViewById(R.id.name)
-        email = findViewById(R.id.email)
-        password = findViewById(R.id.password)
-        ownPhone = findViewById(R.id.ownPhone)
-        emergencyPhone = findViewById(R.id.emergencyPhone)
-        smsPhone1 = findViewById(R.id.smsPhone1)
-        smsPhone2 = findViewById(R.id.smsPhone2)
-        smsPhone3 = findViewById(R.id.smsPhone3)
-        smsPhone4 = findViewById(R.id.smsPhone4)
-
-        trialBadge = findViewById(R.id.trialBadge)
-        status = findViewById(R.id.status)
-        stopTrackingButton = findViewById(R.id.stopTrackingButton)
-
-        profileData = findViewById(R.id.profileData)
-        subscriptionStatus = findViewById(R.id.subscriptionStatus)
     }
 
     private fun setupActions() {
-        registerButton.setOnClickListener {
-            if (saveRegistrationOrProfile()) {
-                if (editingProfile) {
-                    editingProfile = false
-                    showProfile()
-                } else {
-                    showMain()
-                }
+        findViewById<Button>(R.id.pickCallContactButton).setOnClickListener {
+            openPhoneContactPicker(REQ_CALL_CONTACT)
+        }
+        findViewById<Button>(R.id.pickSms1Button).setOnClickListener {
+            openPhoneContactPicker(REQ_SMS1_CONTACT)
+        }
+        findViewById<Button>(R.id.pickSms2Button).setOnClickListener {
+            openPhoneContactPicker(REQ_SMS2_CONTACT)
+        }
+        findViewById<Button>(R.id.pickSms3Button).setOnClickListener {
+            openPhoneContactPicker(REQ_SMS3_CONTACT)
+        }
+        findViewById<Button>(R.id.pickSms4Button).setOnClickListener {
+            openPhoneContactPicker(REQ_SMS4_CONTACT)
+        }
+
+        findViewById<Button>(R.id.saveSetupButton).setOnClickListener {
+            if (saveProfile()) {
+                editingProfile = false
+                requestEmergencyPermissionsIfNeeded()
+                showHome()
             }
         }
 
-        cancelEditButton.setOnClickListener {
+        findViewById<Button>(R.id.cancelEditButton).setOnClickListener {
             editingProfile = false
+            loadContactState()
             showProfile()
         }
 
@@ -218,48 +224,39 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.editProfileButton).setOnClickListener {
-            showRegistration(editing = true)
+            showSetup(editing = true)
         }
 
         findViewById<Button>(R.id.profileBackButton).setOnClickListener {
-            if (canUseEmergency()) showMain() else showExpired()
+            if (canUseHelp()) showHome() else showExpired()
         }
 
-        findViewById<Button>(R.id.mercadoPagoButton).setOnClickListener {
-            openSubscription("mercadopago")
-        }
-
-        findViewById<Button>(R.id.cardButton).setOnClickListener {
-            openSubscription("card")
+        findViewById<Button>(R.id.subscribeButton).setOnClickListener {
+            showSubscriptionPendingMessage()
         }
 
         findViewById<Button>(R.id.expiredSubscribeButton).setOnClickListener {
-            openSubscription("mercadopago")
+            showSubscriptionPendingMessage()
         }
 
         findViewById<Button>(R.id.expiredProfileButton).setOnClickListener {
             showProfile()
         }
 
-        stopTrackingButton.setOnClickListener {
-            stopLiveTracking()
-        }
-
         val helpButton = findViewById<Button>(R.id.helpButton)
         helpButton.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    if (!canUseEmergency()) {
+                    if (!canUseHelp()) {
                         showExpired()
                         return@setOnTouchListener true
                     }
-
                     holdTriggered = false
-                    status.text = "Seguí apretando..."
+                    status.text = "Seguí apretando…"
                     holdHandler.postDelayed({
                         holdTriggered = true
-                        triggerEmergency()
-                    }, 3000)
+                        triggerHelp()
+                    }, 3000L)
                     true
                 }
 
@@ -278,202 +275,330 @@ class MainActivity : AppCompatActivity() {
 
     private fun prefs() = getSharedPreferences(PREFS, MODE_PRIVATE)
 
-    private fun migrateLegacyValues() {
+    private fun migrateLegacyData() {
+        val legacy = getSharedPreferences("cerca", MODE_PRIVATE)
         val p = prefs()
-        val editor = p.edit()
 
-        if (p.getString("smsPhone1", "").isNullOrBlank()) {
-            val oldSms = p.getString("smsPhone", "") ?: ""
-            if (oldSms.isNotBlank()) editor.putString("smsPhone1", oldSms)
+        if (p.getBoolean("migration_done", false)) return
+
+        val editor = p.edit()
+        val oldName = legacy.getString("name", "") ?: ""
+        val oldEmail = legacy.getString("email", "") ?: ""
+        val oldOwn = legacy.getString("ownPhone", "") ?: ""
+        val oldCall = legacy.getString("emergencyPhone", "") ?: ""
+        val oldSms1 = legacy.getString("smsPhone1", legacy.getString("smsPhone", "")) ?: ""
+        val oldSms2 = legacy.getString("smsPhone2", "") ?: ""
+        val oldSms3 = legacy.getString("smsPhone3", "") ?: ""
+        val oldSms4 = legacy.getString("smsPhone4", "") ?: ""
+
+        if (oldName.isNotBlank()) editor.putString("name", oldName)
+        if (oldEmail.isNotBlank()) editor.putString("email", oldEmail)
+        if (oldOwn.isNotBlank()) editor.putString("ownPhone", oldOwn)
+        if (oldCall.isNotBlank()) {
+            editor.putString("callPhone", normalizePhone(oldCall))
+            editor.putString("callName", "Contacto guardado")
+        }
+        if (oldSms1.isNotBlank()) {
+            editor.putString("sms1Phone", normalizePhone(oldSms1))
+            editor.putString("sms1Name", "Contacto guardado")
+        }
+        if (oldSms2.isNotBlank()) {
+            editor.putString("sms2Phone", normalizePhone(oldSms2))
+            editor.putString("sms2Name", "Contacto guardado")
+        }
+        if (oldSms3.isNotBlank()) {
+            editor.putString("sms3Phone", normalizePhone(oldSms3))
+            editor.putString("sms3Name", "Contacto guardado")
+        }
+        if (oldSms4.isNotBlank()) {
+            editor.putString("sms4Phone", normalizePhone(oldSms4))
+            editor.putString("sms4Name", "Contacto guardado")
         }
 
-        editor.apply()
+        editor.putBoolean("migration_done", true).apply()
     }
 
-    private fun isRegistered(): Boolean = prefs().getBoolean("registered_v4", false)
+    private fun loadContactState() {
+        val p = prefs()
 
-    private fun isSubscribed(): Boolean = prefs().getBoolean("subscribed", false)
+        callName = p.getString("callName", "") ?: ""
+        callPhone = p.getString("callPhone", "") ?: ""
+        sms1Name = p.getString("sms1Name", "") ?: ""
+        sms1Phone = p.getString("sms1Phone", "") ?: ""
+        sms2Name = p.getString("sms2Name", "") ?: ""
+        sms2Phone = p.getString("sms2Phone", "") ?: ""
+        sms3Name = p.getString("sms3Name", "") ?: ""
+        sms3Phone = p.getString("sms3Phone", "") ?: ""
+        sms4Name = p.getString("sms4Name", "") ?: ""
+        sms4Phone = p.getString("sms4Phone", "") ?: ""
 
-    private fun trialStart(): Long = prefs().getLong("trialStartMillis", 0L)
-
-    private fun trialEnd(): Long {
-        val start = trialStart()
-        return if (start <= 0L) 0L else start + TRIAL_DAYS * DAY_MS
+        updateContactDisplays()
     }
 
-    private fun isTrialValid(): Boolean {
-        val end = trialEnd()
-        return end > System.currentTimeMillis()
+    private fun updateContactDisplays() {
+        callContactDisplay.text = contactLabel(
+            callName,
+            callPhone,
+            "Todavía no elegiste un contacto"
+        )
+        sms1Display.text = contactLabel(sms1Name, sms1Phone, "Contacto 1 · Sin elegir")
+        sms2Display.text = contactLabel(sms2Name, sms2Phone, "Contacto 2 · Opcional")
+        sms3Display.text = contactLabel(sms3Name, sms3Phone, "Contacto 3 · Opcional")
+        sms4Display.text = contactLabel(sms4Name, sms4Phone, "Contacto 4 · Opcional")
+
+        if (callPhone.isNotBlank()) callPhoneManual.setText(callPhone)
     }
 
-    private fun canUseEmergency(): Boolean = isSubscribed() || isTrialValid()
-
-    private fun daysRemaining(): Int {
-        val diff = trialEnd() - System.currentTimeMillis()
-        if (diff <= 0L) return 0
-        return ceil(diff.toDouble() / DAY_MS.toDouble()).toInt()
+    private fun contactLabel(contactName: String, phone: String, emptyText: String): String {
+        return if (phone.isBlank()) {
+            emptyText
+        } else {
+            val displayName = contactName.ifBlank { "Contacto" }
+            "$displayName\n$phone"
+        }
     }
 
-    private fun showCorrectInitialScreen() {
-        if (!isRegistered()) {
-            showRegistration(editing = false)
+    private fun openPhoneContactPicker(requestCode: Int) {
+        try {
+            val intent = Intent(
+                Intent.ACTION_PICK,
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+            )
+            startActivityForResult(intent, requestCode)
+        } catch (_: Exception) {
+            toast("No pude abrir tus contactos.")
+        }
+    }
+
+    @Deprecated("Deprecated in Android API, retained for compatibility with this MVP")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (resultCode != Activity.RESULT_OK) return
+        val uri = data?.data ?: return
+
+        var pickedName = ""
+        var pickedPhone = ""
+
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
+
+        var cursor: Cursor? = null
+        try {
+            cursor = contentResolver.query(uri, projection, null, null, null)
+            if (cursor != null && cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                )
+                val numberIndex = cursor.getColumnIndex(
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                )
+
+                if (nameIndex >= 0) pickedName = cursor.getString(nameIndex) ?: ""
+                if (numberIndex >= 0) pickedPhone = normalizePhone(cursor.getString(numberIndex) ?: "")
+            }
+        } finally {
+            cursor?.close()
+        }
+
+        if (pickedPhone.isBlank()) {
+            toast("Ese contacto no tiene un teléfono disponible.")
             return
         }
 
-        if (canUseEmergency()) showMain() else showExpired()
+        when (requestCode) {
+            REQ_CALL_CONTACT -> {
+                callName = pickedName
+                callPhone = pickedPhone
+                callPhoneManual.setText(pickedPhone)
+            }
+            REQ_SMS1_CONTACT -> {
+                sms1Name = pickedName
+                sms1Phone = pickedPhone
+            }
+            REQ_SMS2_CONTACT -> {
+                sms2Name = pickedName
+                sms2Phone = pickedPhone
+            }
+            REQ_SMS3_CONTACT -> {
+                sms3Name = pickedName
+                sms3Phone = pickedPhone
+            }
+            REQ_SMS4_CONTACT -> {
+                sms4Name = pickedName
+                sms4Phone = pickedPhone
+            }
+        }
+
+        updateContactDisplays()
     }
 
-    private fun showOnly(panel: LinearLayout) {
-        registerPanel.visibility = View.GONE
-        mainPanel.visibility = View.GONE
+    private fun showInitialScreen() {
+        if (!prefs().getBoolean("registered_v5", false)) {
+            showSetup(editing = false)
+        } else if (canUseHelp()) {
+            showHome()
+        } else {
+            showExpired()
+        }
+    }
+
+    private fun showOnly(panel: View) {
+        setupPanel.visibility = View.GONE
+        homePanel.visibility = View.GONE
         profilePanel.visibility = View.GONE
         expiredPanel.visibility = View.GONE
         panel.visibility = View.VISIBLE
     }
 
-    private fun currentVisiblePanel(): String {
-        return when {
-            mainPanel.visibility == View.VISIBLE -> "main"
-            profilePanel.visibility == View.VISIBLE -> "profile"
-            expiredPanel.visibility == View.VISIBLE -> "expired"
-            else -> "register"
-        }
-    }
-
-    private fun showRegistration(editing: Boolean) {
+    private fun showSetup(editing: Boolean) {
         editingProfile = editing
-        loadFormValues()
-
-        if (editing) {
-            registerTitle.text = "Editar mis datos"
-            registerSubtitle.text = "Actualizá tu información y contactos."
-            registerButton.text = "GUARDAR CAMBIOS"
-            cancelEditButton.visibility = View.VISIBLE
-            password.setText("")
-            password.hint = "Nueva contraseña (opcional)"
-        } else {
-            registerTitle.text = "Crear tu cuenta"
-            registerSubtitle.text = "Completá tus datos y activá 30 días gratis."
-            registerButton.text = "CREAR CUENTA Y ACTIVAR 30 DÍAS"
-            cancelEditButton.visibility = View.GONE
-            password.hint = "Contraseña"
-        }
-
-        showOnly(registerPanel)
-    }
-
-    private fun loadFormValues() {
         val p = prefs()
+
         name.setText(p.getString("name", ""))
         email.setText(p.getString("email", ""))
         ownPhone.setText(p.getString("ownPhone", ""))
-        emergencyPhone.setText(p.getString("emergencyPhone", ""))
-        smsPhone1.setText(p.getString("smsPhone1", ""))
-        smsPhone2.setText(p.getString("smsPhone2", ""))
-        smsPhone3.setText(p.getString("smsPhone3", ""))
-        smsPhone4.setText(p.getString("smsPhone4", ""))
         password.setText("")
+        callPhoneManual.setText(callPhone)
+        updateContactDisplays()
+
+        if (editing) {
+            setupTitle.text = "Editar perfil y contactos"
+            setupSubtitle.text = "Actualizá tu información. Los cambios se guardan al continuar."
+            password.hint = "Nueva contraseña (opcional)"
+            findViewById<Button>(R.id.saveSetupButton).text = "GUARDAR CAMBIOS"
+            findViewById<Button>(R.id.cancelEditButton).visibility = View.VISIBLE
+        } else {
+            setupTitle.text = "Tu red de ayuda, siempre cerca"
+            setupSubtitle.text = "Configurá una vez tus datos y contactos. Después, pedir ayuda es simple."
+            password.hint = "Contraseña"
+            findViewById<Button>(R.id.saveSetupButton).text = "GUARDAR Y CONTINUAR"
+            findViewById<Button>(R.id.cancelEditButton).visibility = View.GONE
+        }
+
+        showOnly(setupPanel)
     }
 
-    private fun saveRegistrationOrProfile(): Boolean {
-        val person = name.text.toString().trim()
+    private fun saveProfile(): Boolean {
+        val personName = name.text.toString().trim()
         val userEmail = email.text.toString().trim()
-        val own = normalizePhone(ownPhone.text.toString())
-        val callPhone = normalizePhone(emergencyPhone.text.toString())
-        val sms1 = normalizePhone(smsPhone1.text.toString())
+        val userPhone = normalizePhone(ownPhone.text.toString())
+        val typedCallPhone = normalizePhone(callPhoneManual.text.toString())
         val pass = password.text.toString()
 
-        if (person.isBlank()) {
-            toast("Ingresá tu nombre")
+        if (personName.isBlank()) {
+            toast("Ingresá tu nombre.")
             return false
         }
         if (!userEmail.contains("@") || !userEmail.contains(".")) {
-            toast("Ingresá un email válido")
+            toast("Ingresá un email válido.")
             return false
         }
         if (!editingProfile && pass.length < 4) {
-            toast("La contraseña debe tener al menos 4 caracteres")
+            toast("La contraseña debe tener al menos 4 caracteres.")
             return false
         }
-        if (own.isBlank()) {
-            toast("Ingresá tu teléfono")
+        if (userPhone.isBlank()) {
+            toast("Ingresá tu teléfono.")
             return false
         }
+
+        if (typedCallPhone.isNotBlank() && typedCallPhone != callPhone) {
+            callPhone = typedCallPhone
+            callName = "Número manual"
+        }
+
         if (callPhone.isBlank()) {
-            toast("Ingresá el teléfono para llamada")
+            toast("Elegí el contacto para la llamada de ayuda.")
             return false
         }
-        if (sms1.isBlank()) {
-            toast("Ingresá al menos un contacto para SMS")
+        if (sms1Phone.isBlank()) {
+            toast("Elegí al menos un contacto para recibir el SMS.")
             return false
         }
 
         val p = prefs()
-        val edit = p.edit()
-            .putString("name", person)
+        val editor = p.edit()
+            .putString("name", personName)
             .putString("email", userEmail)
-            .putString("ownPhone", own)
-            .putString("emergencyPhone", callPhone)
-            .putString("smsPhone1", sms1)
-            .putString("smsPhone2", normalizePhone(smsPhone2.text.toString()))
-            .putString("smsPhone3", normalizePhone(smsPhone3.text.toString()))
-            .putString("smsPhone4", normalizePhone(smsPhone4.text.toString()))
+            .putString("ownPhone", userPhone)
+            .putString("callName", callName)
+            .putString("callPhone", callPhone)
+            .putString("sms1Name", sms1Name)
+            .putString("sms1Phone", sms1Phone)
+            .putString("sms2Name", sms2Name)
+            .putString("sms2Phone", sms2Phone)
+            .putString("sms3Name", sms3Name)
+            .putString("sms3Phone", sms3Phone)
+            .putString("sms4Name", sms4Name)
+            .putString("sms4Phone", sms4Phone)
 
         if (pass.isNotBlank()) {
-            edit.putString("passwordHash", sha256(pass))
+            editor.putString("passwordHash", sha256(pass))
         }
 
-        if (!editingProfile && !isRegistered()) {
-            edit.putBoolean("registered_v4", true)
-            edit.putLong("trialStartMillis", System.currentTimeMillis())
-            edit.putBoolean("subscribed", false)
+        if (!p.getBoolean("registered_v5", false)) {
+            editor
+                .putBoolean("registered_v5", true)
+                .putLong("trialStartMillis", System.currentTimeMillis())
         }
 
-        edit.apply()
-        toast(if (editingProfile) "Datos actualizados" else "Cuenta creada. Tenés 30 días gratis.")
+        editor.apply()
+        toast(if (editingProfile) "Datos actualizados." else "Listo. H.E.L.P quedó configurada.")
         return true
     }
 
-    private fun showMain() {
-        if (!canUseEmergency()) {
+    private fun showHome() {
+        if (!canUseHelp()) {
             showExpired()
             return
         }
 
-        showOnly(mainPanel)
-        updateTrialUi()
-        updateTrackingUi()
+        loadContactState()
+        val contacts = savedSmsContacts()
 
-        if (!prefs().getBoolean("trackingActive", false)) {
-            status.text = "Mantené apretado 3 segundos para pedir ayuda."
+        trialBadge.text = if (isSubscriptionActive()) {
+            "Suscripción activa"
+        } else {
+            "Prueba gratuita · ${daysRemaining()} día(s)"
         }
-    }
 
-    private fun updateTrialUi() {
-        trialBadge.text = when {
-            isSubscribed() -> "Suscripción activa"
-            isTrialValid() -> "Prueba gratuita · ${daysRemaining()} día(s) restante(s)"
-            else -> "Prueba finalizada"
-        }
+        homeCallSummary.text = "Llamada: ${callName.ifBlank { "Contacto" }} · $callPhone"
+        homeSmsSummary.text = "Avisos por SMS: ${contacts.size} contacto(s)"
+        status.text = "Mantené apretado 3 segundos para pedir ayuda."
+
+        showOnly(homePanel)
     }
 
     private fun showProfile() {
+        loadContactState()
+
         val p = prefs()
-        val contacts = savedSmsContacts()
-        val contactsText = if (contacts.isEmpty()) "Sin contactos" else contacts.joinToString("\n")
+        val contacts = listOf(
+            sms1Name to sms1Phone,
+            sms2Name to sms2Phone,
+            sms3Name to sms3Phone,
+            sms4Name to sms4Phone
+        ).filter { it.second.isNotBlank() }
 
         profileData.text = buildString {
-            append("Nombre: ${p.getString("name", "")}\n")
-            append("Email: ${p.getString("email", "")}\n")
-            append("Tu teléfono: ${p.getString("ownPhone", "")}\n")
-            append("Llamada de emergencia: ${p.getString("emergencyPhone", "")}\n\n")
-            append("Contactos de alerta:\n$contactsText")
+            append("Nombre\n${p.getString("name", "")}\n\n")
+            append("Email\n${p.getString("email", "")}\n\n")
+            append("Tu teléfono\n${p.getString("ownPhone", "")}\n\n")
+            append("Llamada de ayuda\n${callName.ifBlank { "Contacto" }} · $callPhone\n\n")
+            append("Contactos SMS\n")
+            contacts.forEachIndexed { index, pair ->
+                append("${index + 1}. ${pair.first.ifBlank { "Contacto" }} · ${pair.second}")
+                if (index < contacts.lastIndex) append("\n")
+            }
         }
 
         subscriptionStatus.text = when {
-            isSubscribed() -> "Estado: SUSCRIPCIÓN ACTIVA"
-            isTrialValid() -> "Estado: PRUEBA GRATUITA\nQuedan ${daysRemaining()} día(s). Al finalizar, el botón de emergencia quedará bloqueado hasta que te suscribas."
-            else -> "Estado: PRUEBA FINALIZADA\nSuscribite para volver a utilizar CERCA."
+            isSubscriptionActive() -> "Estado: activa."
+            isTrialValid() -> "Prueba gratuita activa. Te quedan ${daysRemaining()} día(s)."
+            else -> "Tu prueba gratuita terminó. Necesitás una suscripción para utilizar el botón de ayuda."
         }
 
         showOnly(profilePanel)
@@ -483,29 +608,39 @@ class MainActivity : AppCompatActivity() {
         showOnly(expiredPanel)
     }
 
-    private fun openSubscription(method: String) {
-        val userEmail = Uri.encode(prefs().getString("email", "") ?: "")
-        val url = "$SUBSCRIBE_URL?method=$method&email=$userEmail"
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    private fun showSubscriptionPendingMessage() {
+        toast("La suscripción se conectará con Google Play Billing al crear el producto en Play Console.")
     }
 
-    private fun handleSubscriptionIntent(intent: Intent?) {
-        val data = intent?.data ?: return
-        if (data.scheme == "cerca" && data.host == "subscription-success") {
-            prefs().edit().putBoolean("subscribed", true).apply()
-            toast("Suscripción activada")
-        }
+    private fun isSubscriptionActive(): Boolean =
+        prefs().getBoolean("subscriptionActive", false)
+
+    private fun trialStart(): Long = prefs().getLong("trialStartMillis", 0L)
+
+    private fun isTrialValid(): Boolean {
+        val start = trialStart()
+        if (start <= 0L) return false
+        return System.currentTimeMillis() < start + TRIAL_DAYS * DAY_MS
     }
 
-    private fun requestNeededPermissions() {
-        val core = mutableListOf(
+    private fun daysRemaining(): Int {
+        val end = trialStart() + TRIAL_DAYS * DAY_MS
+        val diff = end - System.currentTimeMillis()
+        if (diff <= 0L) return 0
+        return ceil(diff.toDouble() / DAY_MS.toDouble()).toInt()
+    }
+
+    private fun canUseHelp(): Boolean = isSubscriptionActive() || isTrialValid()
+
+    private fun requestEmergencyPermissionsIfNeeded() {
+        val permissions = mutableListOf(
             Manifest.permission.CALL_PHONE,
             Manifest.permission.SEND_SMS,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
 
-        val missing = core.filter {
+        val missing = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
@@ -513,117 +648,118 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(
                 this,
                 missing.toTypedArray(),
-                permissionRequestCode
-            )
-        }
-
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                notificationPermissionRequestCode
+                REQ_PERMISSIONS
             )
         }
     }
 
-    private fun hasCorePermissions(): Boolean {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED &&
-            (
-                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            )
+    private fun hasEmergencyPermissions(): Boolean {
+        val phone = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CALL_PHONE
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val sms = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.SEND_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val fine = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val coarse = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        return phone && sms && (fine || coarse)
     }
 
-    private fun triggerEmergency() {
-        if (!canUseEmergency()) {
-            showExpired()
+    private fun triggerHelp() {
+        if (!hasEmergencyPermissions()) {
+            status.text = "Necesito permisos de teléfono, SMS y ubicación."
+            requestEmergencyPermissionsIfNeeded()
             return
         }
 
-        if (!hasCorePermissions()) {
-            status.text = "CERCA necesita permisos de teléfono, SMS y ubicación."
-            requestNeededPermissions()
-            return
-        }
+        status.text = "Obteniendo tu ubicación…"
 
-        status.text = "Activando emergencia y ubicación en vivo..."
-
-        val topic = "cerca_" + UUID.randomUUID().toString().replace("-", "")
-        val person = prefs().getString("name", "")?.ifBlank { "La persona" } ?: "La persona"
-
-        getLocation { location ->
-            val encodedName = URLEncoder.encode(person, "UTF-8")
-            val initial = if (location != null) {
-                "&lat=${location.latitude}&lon=${location.longitude}"
+        getCurrentLocation { latitude, longitude ->
+            val personName = prefs().getString("name", "")?.ifBlank { "Una persona" } ?: "Una persona"
+            val mapsLink = if (latitude != null && longitude != null) {
+                "https://maps.google.com/?q=$latitude,$longitude"
             } else {
-                ""
+                "Ubicación no disponible"
             }
 
-            val liveLink = "$TRACKER_URL?t=$topic&name=$encodedName$initial"
-            val message = "$person necesita ayuda. Seguí su ubicación en tiempo real: $liveLink"
-
-            startLiveTracking(topic, person)
-            sendSmsToSavedContacts(message)
+            val message = "H.E.L.P · $personName necesita ayuda. Ubicación: $mapsLink"
+            sendSmsToContacts(message)
 
             Handler(Looper.getMainLooper()).postDelayed({
-                makeEmergencyCall()
-            }, 700L)
+                makeDirectCall()
+            }, 900L)
         }
     }
 
-    private fun startLiveTracking(topic: String, person: String) {
-        prefs().edit()
-            .putBoolean("trackingActive", true)
-            .putString("trackingTopic", topic)
-            .apply()
-
-        val intent = Intent(this, LocationSharingService::class.java).apply {
-            action = LocationSharingService.ACTION_START
-            putExtra(LocationSharingService.EXTRA_TOPIC, topic)
-            putExtra(LocationSharingService.EXTRA_NAME, person)
-        }
-        ContextCompat.startForegroundService(this, intent)
-        updateTrackingUi()
-    }
-
-    private fun stopLiveTracking() {
-        val intent = Intent(this, LocationSharingService::class.java).apply {
-            action = LocationSharingService.ACTION_STOP
-        }
-        startService(intent)
-
-        prefs().edit()
-            .putBoolean("trackingActive", false)
-            .remove("trackingTopic")
-            .apply()
-
-        status.text = "Ubicación en vivo finalizada."
-        updateTrackingUi()
-    }
-
-    private fun updateTrackingUi() {
-        val active = prefs().getBoolean("trackingActive", false)
-        stopTrackingButton.visibility = if (active) View.VISIBLE else View.GONE
-        if (active && mainPanel.visibility == View.VISIBLE) {
-            status.text = "Emergencia activa · compartiendo ubicación en vivo."
-        }
-    }
-
-    private fun savedSmsContacts(): List<String> {
-        val p = prefs()
-        return listOf(
-            p.getString("smsPhone1", "") ?: "",
-            p.getString("smsPhone2", "") ?: "",
-            p.getString("smsPhone3", "") ?: "",
-            p.getString("smsPhone4", "") ?: ""
+    private fun getCurrentLocation(callback: (Double?, Double?) -> Unit) {
+        val fine = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
         )
-            .map { normalizePhone(it) }
-            .filter { it.isNotBlank() }
-            .distinct()
+        val coarse = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+
+        if (fine != PackageManager.PERMISSION_GRANTED &&
+            coarse != PackageManager.PERMISSION_GRANTED
+        ) {
+            callback(null, null)
+            return
+        }
+
+        val client = LocationServices.getFusedLocationProviderClient(this)
+        val token = CancellationTokenSource()
+
+        client.getCurrentLocation(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            token.token
+        )
+            .addOnSuccessListener { location ->
+                if (location != null) {
+                    callback(location.latitude, location.longitude)
+                } else {
+                    client.lastLocation
+                        .addOnSuccessListener { last ->
+                            callback(last?.latitude, last?.longitude)
+                        }
+                        .addOnFailureListener {
+                            callback(null, null)
+                        }
+                }
+            }
+            .addOnFailureListener {
+                client.lastLocation
+                    .addOnSuccessListener { last ->
+                        callback(last?.latitude, last?.longitude)
+                    }
+                    .addOnFailureListener {
+                        callback(null, null)
+                    }
+            }
+    }
+
+    private fun savedSmsContacts(): List<Pair<String, String>> {
+        return listOf(
+            sms1Name to sms1Phone,
+            sms2Name to sms2Phone,
+            sms3Name to sms3Phone,
+            sms4Name to sms4Phone
+        )
+            .filter { it.second.isNotBlank() }
+            .distinctBy { it.second }
     }
 
     @Suppress("DEPRECATION")
@@ -641,12 +777,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendSmsToSavedContacts(message: String) {
+    private fun sendSmsToContacts(message: String) {
         val manager = smsManagerForDefaultSim() ?: return
         val contacts = savedSmsContacts()
 
         if (contacts.isEmpty()) {
-            status.text = "No hay contactos de SMS configurados."
+            status.text = "No hay contactos configurados para SMS."
             return
         }
 
@@ -654,21 +790,23 @@ class MainActivity : AppCompatActivity() {
             currentSmsBatch = System.currentTimeMillis()
             expectedSmsParts = 0
             sentSmsParts = 0
-            deliveredSmsParts = 0
             failedSmsParts = 0
+            deliveredSmsParts = 0
 
-            val allParts = contacts.map { destination ->
-                destination to manager.divideMessage(message)
+            val allParts = contacts.map { pair ->
+                pair.second to manager.divideMessage(message)
             }
 
             expectedSmsParts = allParts.sumOf { it.second.size }
-            var requestCode = (currentSmsBatch xor (currentSmsBatch ushr 32)).toInt()
+            var requestCode = (
+                currentSmsBatch xor (currentSmsBatch ushr 32)
+            ).toInt()
 
             allParts.forEach { (destination, parts) ->
                 val sentIntents = ArrayList<PendingIntent>()
-                val deliveryIntents = ArrayList<PendingIntent>()
+                val deliveredIntents = ArrayList<PendingIntent>()
 
-                for (i in parts.indices) {
+                parts.indices.forEach {
                     val sentIntent = Intent(ACTION_SMS_SENT)
                         .setPackage(packageName)
                         .putExtra(EXTRA_BATCH, currentSmsBatch)
@@ -677,7 +815,8 @@ class MainActivity : AppCompatActivity() {
                         .setPackage(packageName)
                         .putExtra(EXTRA_BATCH, currentSmsBatch)
 
-                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                        PendingIntent.FLAG_IMMUTABLE
 
                     sentIntents.add(
                         PendingIntent.getBroadcast(
@@ -688,7 +827,7 @@ class MainActivity : AppCompatActivity() {
                         )
                     )
 
-                    deliveryIntents.add(
+                    deliveredIntents.add(
                         PendingIntent.getBroadcast(
                             this,
                             requestCode++,
@@ -704,7 +843,7 @@ class MainActivity : AppCompatActivity() {
                         null,
                         parts[0],
                         sentIntents[0],
-                        deliveryIntents[0]
+                        deliveredIntents[0]
                     )
                 } else {
                     manager.sendMultipartTextMessage(
@@ -712,73 +851,60 @@ class MainActivity : AppCompatActivity() {
                         null,
                         parts,
                         sentIntents,
-                        deliveryIntents
+                        deliveredIntents
                     )
                 }
             }
 
-            status.text = "Alertando a ${contacts.size} contacto(s)..."
+            status.text = "Enviando aviso a ${contacts.size} contacto(s)…"
         } catch (e: Exception) {
-            status.text = "No se pudieron enviar los SMS."
+            status.text = "No pude enviar el SMS. La llamada se realizará igual."
         }
     }
 
-    private fun makeEmergencyCall() {
-        val phone = normalizePhone(prefs().getString("emergencyPhone", "") ?: "")
-        if (phone.isBlank()) return
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
-            requestNeededPermissions()
+    private fun makeDirectCall() {
+        val phone = normalizePhone(callPhone)
+        if (phone.isBlank()) {
+            status.text = "No hay un número configurado para llamada."
             return
         }
 
-        startActivity(
-            Intent(
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CALL_PHONE
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestEmergencyPermissionsIfNeeded()
+            return
+        }
+
+        try {
+            status.text = "Llamando a ${callName.ifBlank { "tu contacto" }}…"
+            val intent = Intent(
                 Intent.ACTION_CALL,
                 Uri.fromParts("tel", phone, null)
             )
-        )
-    }
-
-    private fun getLocation(callback: (android.location.Location?) -> Unit) {
-        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
-
-        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
-            callback(null)
-            return
+            startActivity(intent)
+        } catch (_: Exception) {
+            status.text = "No pude iniciar la llamada."
         }
-
-        val client = LocationServices.getFusedLocationProviderClient(this)
-        val token = CancellationTokenSource()
-
-        client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, token.token)
-            .addOnSuccessListener { loc ->
-                if (loc != null) {
-                    callback(loc)
-                } else {
-                    client.lastLocation
-                        .addOnSuccessListener { callback(it) }
-                        .addOnFailureListener { callback(null) }
-                }
-            }
-            .addOnFailureListener {
-                client.lastLocation
-                    .addOnSuccessListener { callback(it) }
-                    .addOnFailureListener { callback(null) }
-            }
     }
 
     private fun normalizePhone(raw: String): String {
         val value = raw.trim()
-        return value.filterIndexed { index, c ->
-            c.isDigit() || (c == '+' && index == 0)
+        return value.filterIndexed { index, char ->
+            char.isDigit() || (char == '+' && index == 0)
         }
     }
 
     private fun sha256(value: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+        val bytes = MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray())
+
+        return bytes.joinToString("") {
+            "%02x".format(it)
+        }
     }
 
     private fun toast(message: String) {

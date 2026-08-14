@@ -1,0 +1,621 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#FAF7F2">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="32dp">
+
+        <!-- ONBOARDING / EDITAR PERFIL -->
+        <LinearLayout
+            android:id="@+id/setupPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="H.E.L.P"
+                android:textColor="#173B46"
+                android:textSize="38sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:letterSpacing="0.08"/>
+
+            <TextView
+                android:id="@+id/setupTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Tu red de ayuda, siempre cerca"
+                android:textColor="#263238"
+                android:textSize="27sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginTop="8dp"/>
+
+            <TextView
+                android:id="@+id/setupSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Configurá una vez tus datos y contactos. Después, pedir ayuda es simple."
+                android:textColor="#667177"
+                android:textSize="16sp"
+                android:gravity="center"
+                android:lineSpacingExtra="3dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="22dp"/>
+
+            <!-- Datos personales -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Tus datos"
+                    android:textColor="#173B46"
+                    android:textSize="20sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Los usamos para identificar el aviso de ayuda."
+                    android:textColor="#7B858A"
+                    android:textSize="14sp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="12dp"/>
+
+                <EditText
+                    android:id="@+id/name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Nombre y apellido"
+                    android:inputType="textPersonName"
+                    android:textSize="16sp"
+                    android:background="@drawable/input_bg"
+                    android:layout_marginTop="6dp"/>
+
+                <EditText
+                    android:id="@+id/email"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Email"
+                    android:inputType="textEmailAddress"
+                    android:textSize="16sp"
+                    android:background="@drawable/input_bg"
+                    android:layout_marginTop="10dp"/>
+
+                <EditText
+                    android:id="@+id/password"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Contraseña"
+                    android:inputType="textPassword"
+                    android:textSize="16sp"
+                    android:background="@drawable/input_bg"
+                    android:layout_marginTop="10dp"/>
+
+                <EditText
+                    android:id="@+id/ownPhone"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Tu teléfono"
+                    android:inputType="phone"
+                    android:textSize="16sp"
+                    android:background="@drawable/input_bg"
+                    android:layout_marginTop="10dp"/>
+            </LinearLayout>
+
+            <!-- Contacto llamada -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:layout_marginTop="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Llamada de ayuda"
+                    android:textColor="#173B46"
+                    android:textSize="20sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Elegí por nombre a quién H.E.L.P llamará automáticamente."
+                    android:textColor="#7B858A"
+                    android:textSize="14sp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="12dp"/>
+
+                <TextView
+                    android:id="@+id/callContactDisplay"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Todavía no elegiste un contacto"
+                    android:textColor="#2E3C42"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:padding="14dp"
+                    android:background="@drawable/soft_bg"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pickCallContactButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="BUSCAR EN MIS CONTACTOS"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="12dp"
+                    app:backgroundTint="#173B46"
+                    app:cornerRadius="16dp"/>
+
+                <EditText
+                    android:id="@+id/callPhoneManual"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="O escribir número manualmente"
+                    android:inputType="phone"
+                    android:textSize="15sp"
+                    android:background="@drawable/input_bg"
+                    android:layout_marginTop="10dp"/>
+            </LinearLayout>
+
+            <!-- SMS -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:layout_marginTop="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Contactos que recibirán el SMS"
+                    android:textColor="#173B46"
+                    android:textSize="20sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="El mensaje incluirá un link de Google Maps con tu ubicación."
+                    android:textColor="#7B858A"
+                    android:textSize="14sp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="14dp"/>
+
+                <TextView
+                    android:id="@+id/sms1Display"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Contacto 1 · Sin elegir"
+                    android:textColor="#2E3C42"
+                    android:textSize="15sp"
+                    android:padding="13dp"
+                    android:background="@drawable/soft_bg"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pickSms1Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="ELEGIR CONTACTO 1"
+                    android:textColor="#173B46"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"
+                    app:backgroundTint="#EEE8E0"
+                    app:cornerRadius="14dp"/>
+
+                <TextView
+                    android:id="@+id/sms2Display"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Contacto 2 · Opcional"
+                    android:textColor="#2E3C42"
+                    android:textSize="15sp"
+                    android:padding="13dp"
+                    android:background="@drawable/soft_bg"
+                    android:layout_marginTop="12dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pickSms2Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="ELEGIR CONTACTO 2"
+                    android:textColor="#173B46"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"
+                    app:backgroundTint="#EEE8E0"
+                    app:cornerRadius="14dp"/>
+
+                <TextView
+                    android:id="@+id/sms3Display"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Contacto 3 · Opcional"
+                    android:textColor="#2E3C42"
+                    android:textSize="15sp"
+                    android:padding="13dp"
+                    android:background="@drawable/soft_bg"
+                    android:layout_marginTop="12dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pickSms3Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="ELEGIR CONTACTO 3"
+                    android:textColor="#173B46"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"
+                    app:backgroundTint="#EEE8E0"
+                    app:cornerRadius="14dp"/>
+
+                <TextView
+                    android:id="@+id/sms4Display"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Contacto 4 · Opcional"
+                    android:textColor="#2E3C42"
+                    android:textSize="15sp"
+                    android:padding="13dp"
+                    android:background="@drawable/soft_bg"
+                    android:layout_marginTop="12dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/pickSms4Button"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:text="ELEGIR CONTACTO 4"
+                    android:textColor="#173B46"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"
+                    app:backgroundTint="#EEE8E0"
+                    app:cornerRadius="14dp"/>
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/saveSetupButton"
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:text="GUARDAR Y CONTINUAR"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginTop="18dp"
+                app:backgroundTint="#173B46"
+                app:cornerRadius="18dp"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/cancelEditButton"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="CANCELAR"
+                android:textColor="#173B46"
+                android:textStyle="bold"
+                android:visibility="gone"
+                android:layout_marginTop="8dp"
+                app:backgroundTint="#EEE8E0"
+                app:cornerRadius="18dp"/>
+        </LinearLayout>
+
+        <!-- HOME -->
+        <LinearLayout
+            android:id="@+id/homePanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="H.E.L.P"
+                        android:textColor="#173B46"
+                        android:textSize="34sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.08"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ayuda cuando la necesitás"
+                        android:textColor="#6B767C"
+                        android:textSize="15sp"/>
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/profileButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="46dp"
+                    android:text="PERFIL"
+                    android:textColor="#173B46"
+                    android:textStyle="bold"
+                    app:backgroundTint="#EEE8E0"
+                    app:cornerRadius="16dp"/>
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/trialBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Prueba gratuita"
+                android:textColor="#31664A"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:background="@drawable/badge_bg"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:layout_marginTop="22dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:layout_marginTop="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Tu red está configurada"
+                    android:textColor="#173B46"
+                    android:textSize="19sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:id="@+id/homeCallSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Llamada: —"
+                    android:textColor="#526067"
+                    android:textSize="15sp"
+                    android:layout_marginTop="9dp"/>
+
+                <TextView
+                    android:id="@+id/homeSmsSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Avisos por SMS: —"
+                    android:textColor="#526067"
+                    android:textSize="15sp"
+                    android:layout_marginTop="5dp"/>
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Mantené apretado 3 segundos para pedir ayuda."
+                android:textColor="#34444B"
+                android:textSize="19sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:lineSpacingExtra="3dp"
+                android:layout_marginTop="30dp"
+                android:layout_marginBottom="18dp"/>
+
+            <Button
+                android:id="@+id/helpButton"
+                android:layout_width="286dp"
+                android:layout_height="286dp"
+                android:background="@drawable/danger_circle"
+                android:backgroundTint="@null"
+                android:text="PEDIR&#10;AYUDA"
+                android:textColor="#FFFFFF"
+                android:textSize="38sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:elevation="8dp"/>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Al activarlo, H.E.L.P enviará tu ubicación de Google Maps a tus contactos y realizará la llamada configurada."
+                android:textColor="#788287"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:lineSpacingExtra="3dp"
+                android:layout_marginTop="22dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"/>
+        </LinearLayout>
+
+        <!-- PERFIL -->
+        <LinearLayout
+            android:id="@+id/profilePanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Mi perfil"
+                android:textColor="#173B46"
+                android:textSize="30sp"
+                android:textStyle="bold"/>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Tus datos y tu red de ayuda"
+                android:textColor="#6B767C"
+                android:textSize="16sp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="18dp"/>
+
+            <TextView
+                android:id="@+id/profileData"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#33434A"
+                android:textSize="16sp"
+                android:lineSpacingExtra="5dp"
+                android:background="@drawable/card_bg"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/editProfileButton"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="EDITAR DATOS Y CONTACTOS"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:layout_marginTop="12dp"
+                app:backgroundTint="#173B46"
+                app:cornerRadius="17dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:layout_marginTop="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Suscripción"
+                    android:textColor="#173B46"
+                    android:textSize="20sp"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:id="@+id/subscriptionStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#526067"
+                    android:textSize="15sp"
+                    android:lineSpacingExtra="4dp"
+                    android:layout_marginTop="8dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/subscribeButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="SUSCRIBIRME EN GOOGLE PLAY"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:layout_marginTop="14dp"
+                    app:backgroundTint="#D86F5B"
+                    app:cornerRadius="16dp"/>
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/profileBackButton"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="VOLVER"
+                android:textColor="#173B46"
+                android:textStyle="bold"
+                android:layout_marginTop="14dp"
+                app:backgroundTint="#EEE8E0"
+                app:cornerRadius="17dp"/>
+        </LinearLayout>
+
+        <!-- VENCIDO -->
+        <LinearLayout
+            android:id="@+id/expiredPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="H.E.L.P"
+                android:textColor="#173B46"
+                android:textSize="36sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:letterSpacing="0.08"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:gravity="center"
+                android:layout_marginTop="40dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Tu período gratuito terminó"
+                    android:textColor="#B64E44"
+                    android:textSize="25sp"
+                    android:textStyle="bold"
+                    android:gravity="center"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Para seguir utilizando H.E.L.P necesitás una suscripción activa."
+                    android:textColor="#5E6B71"
+                    android:textSize="17sp"
+                    android:gravity="center"
+                    android:lineSpacingExtra="4dp"
+                    android:layout_marginTop="10dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/expiredSubscribeButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="54dp"
+                    android:text="SUSCRIBIRME"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:layout_marginTop="22dp"
+                    app:backgroundTint="#D86F5B"
+                    app:cornerRadius="17dp"/>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/expiredProfileButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="VER MI PERFIL"
+                    android:textColor="#173B46"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"
+                    app:backgroundTint="#EEE8E0"
+                    app:cornerRadius="17dp"/>
+            </LinearLayout>
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

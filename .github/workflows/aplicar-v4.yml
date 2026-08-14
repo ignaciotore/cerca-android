@@ -1,0 +1,42 @@
+name: Aplicar CERCA V4
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/aplicar-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Aplicar archivos CERCA V4
+        shell: bash
+        run: |
+          set -e
+          test -f CERCA_V4_APP.zip
+          unzip -o CERCA_V4_APP.zip -d .
+          grep -q 'versionCode = 4' app/build.gradle.kts
+          grep -q 'versionName = "4.0"' app/build.gradle.kts
+          test -f app/src/main/java/com/cerca/mvp/LocationSharingService.kt
+
+      - name: Guardar CERCA V4 en el repositorio
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app
+          if git diff --cached --quiet; then
+            echo "No hay cambios para guardar."
+          else
+            git commit -m "Aplicar CERCA V4"
+            git push
+          fi

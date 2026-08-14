@@ -1,0 +1,823 @@
+name: Crear H.E.L.P. V3
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/help-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android 35
+        run: yes | sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Crear H.E.L.P. V3
+        shell: bash
+        run: |
+          mkdir -p app/src/main/java/com/cerca/mvp
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.cerca.mvp"
+              compileSdk = 35
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              defaultConfig {
+                  applicationId = "com.cerca.mvp"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 3
+                  versionName = "3.0"
+              }
+
+              buildFeatures {
+                  viewBinding = false
+              }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.15.0")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("com.google.android.material:material:1.12.0")
+              implementation("com.google.android.gms:play-services-location:21.3.0")
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.CALL_PHONE" />
+              <uses-permission android:name="android.permission.SEND_SMS" />
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+              <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+              <application
+                  android:allowBackup="true"
+                  android:label="H.E.L.P."
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.Help">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="Theme.Help" parent="Theme.Material3.DayNight.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowLightStatusBar">true</item>
+                  <item name="android:statusBarColor">#F8F6F0</item>
+                  <item name="android:navigationBarColor">#F8F6F0</item>
+                  <item name="colorPrimary">#183650</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > app/src/main/res/layout/activity_main.xml <<'EOF'
+          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:fillViewport="true"
+              android:background="#F8F6F0">
+
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="vertical"
+                  android:padding="22dp">
+
+                  <LinearLayout
+                      android:id="@+id/mainPanel"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:orientation="vertical"
+                      android:gravity="center_horizontal">
+
+                      <LinearLayout
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:orientation="horizontal"
+                          android:gravity="center_vertical">
+
+                          <Space
+                              android:layout_width="48dp"
+                              android:layout_height="48dp"/>
+
+                          <TextView
+                              android:layout_width="0dp"
+                              android:layout_height="wrap_content"
+                              android:layout_weight="1"
+                              android:text="H.E.L.P."
+                              android:textColor="#183650"
+                              android:textSize="38sp"
+                              android:textStyle="bold"
+                              android:gravity="center"/>
+
+                          <Button
+                              android:id="@+id/settingsButton"
+                              android:layout_width="48dp"
+                              android:layout_height="48dp"
+                              android:text="⚙"
+                              android:textSize="22sp"
+                              android:contentDescription="Configuración"
+                              android:padding="0dp"/>
+                      </LinearLayout>
+
+                      <TextView
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:text="Ayuda inmediata cuando la necesitás"
+                          android:textColor="#53616B"
+                          android:textSize="19sp"
+                          android:gravity="center"
+                          android:layout_marginTop="8dp"/>
+
+                      <TextView
+                          android:id="@+id/status"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="Mantené apretado 3 segundos para pedir ayuda."
+                          android:textColor="#263746"
+                          android:textSize="20sp"
+                          android:gravity="center"
+                          android:paddingTop="46dp"
+                          android:paddingBottom="20dp"/>
+
+                      <Button
+                          android:id="@+id/helpButton"
+                          android:layout_width="300dp"
+                          android:layout_height="300dp"
+                          android:backgroundTint="#D72E2E"
+                          android:text="PEDIR\nAYUDA"
+                          android:textColor="#FFFFFF"
+                          android:textStyle="bold"
+                          android:textSize="39sp"/>
+
+                      <TextView
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="Al activar H.E.L.P. se enviará tu ubicación a tus contactos y se iniciará la llamada de emergencia."
+                          android:textColor="#70777C"
+                          android:textSize="15sp"
+                          android:gravity="center"
+                          android:paddingTop="28dp"
+                          android:paddingStart="14dp"
+                          android:paddingEnd="14dp"/>
+                  </LinearLayout>
+
+                  <LinearLayout
+                      android:id="@+id/settingsPanel"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:orientation="vertical"
+                      android:visibility="gone">
+
+                      <TextView
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="Configuración"
+                          android:textColor="#183650"
+                          android:textSize="30sp"
+                          android:textStyle="bold"
+                          android:gravity="center"
+                          android:layout_marginBottom="8dp"/>
+
+                      <TextView
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="Estos datos quedan guardados y no se muestran en la pantalla principal."
+                          android:textColor="#66737C"
+                          android:textSize="16sp"
+                          android:gravity="center"
+                          android:layout_marginBottom="18dp"/>
+
+                      <EditText
+                          android:id="@+id/name"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Nombre de la persona"
+                          android:inputType="textPersonName"/>
+
+                      <EditText
+                          android:id="@+id/emergencyPhone"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Teléfono para llamada"
+                          android:inputType="phone"/>
+
+                      <TextView
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="Contactos que recibirán el SMS con ubicación"
+                          android:textColor="#263746"
+                          android:textStyle="bold"
+                          android:textSize="17sp"
+                          android:layout_marginTop="18dp"
+                          android:layout_marginBottom="4dp"/>
+
+                      <EditText
+                          android:id="@+id/smsPhone1"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Contacto SMS 1"
+                          android:inputType="phone"/>
+
+                      <EditText
+                          android:id="@+id/smsPhone2"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Contacto SMS 2 (opcional)"
+                          android:inputType="phone"/>
+
+                      <EditText
+                          android:id="@+id/smsPhone3"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Contacto SMS 3 (opcional)"
+                          android:inputType="phone"/>
+
+                      <EditText
+                          android:id="@+id/smsPhone4"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:hint="Contacto SMS 4 (opcional)"
+                          android:inputType="phone"/>
+
+                      <Button
+                          android:id="@+id/saveButton"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="GUARDAR CONFIGURACIÓN"
+                          android:textSize="18sp"
+                          android:layout_marginTop="22dp"/>
+
+                      <Button
+                          android:id="@+id/cancelSettingsButton"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:text="VOLVER"
+                          android:layout_marginTop="8dp"/>
+                  </LinearLayout>
+              </LinearLayout>
+          </ScrollView>
+          EOF
+
+          cat > app/src/main/java/com/cerca/mvp/MainActivity.kt <<'EOF'
+          package com.cerca.mvp
+
+          import android.Manifest
+          import android.app.Activity
+          import android.app.PendingIntent
+          import android.content.BroadcastReceiver
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.content.pm.PackageManager
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.telephony.SmsManager
+          import android.telephony.SubscriptionManager
+          import android.view.MotionEvent
+          import android.view.View
+          import android.widget.Button
+          import android.widget.EditText
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat
+          import com.google.android.gms.location.LocationServices
+          import com.google.android.gms.location.Priority
+          import com.google.android.gms.tasks.CancellationTokenSource
+
+          class MainActivity : AppCompatActivity() {
+
+              companion object {
+                  private const val ACTION_SMS_SENT = "com.cerca.mvp.SMS_SENT"
+                  private const val ACTION_SMS_DELIVERED = "com.cerca.mvp.SMS_DELIVERED"
+                  private const val EXTRA_BATCH = "batch"
+              }
+
+              private val permissionRequestCode = 99
+              private val permissions = arrayOf(
+                  Manifest.permission.CALL_PHONE,
+                  Manifest.permission.SEND_SMS,
+                  Manifest.permission.ACCESS_FINE_LOCATION,
+                  Manifest.permission.ACCESS_COARSE_LOCATION
+              )
+
+              private lateinit var mainPanel: LinearLayout
+              private lateinit var settingsPanel: LinearLayout
+              private lateinit var name: EditText
+              private lateinit var emergencyPhone: EditText
+              private lateinit var smsPhone1: EditText
+              private lateinit var smsPhone2: EditText
+              private lateinit var smsPhone3: EditText
+              private lateinit var smsPhone4: EditText
+              private lateinit var status: TextView
+
+              private val holdHandler = Handler(Looper.getMainLooper())
+              private var holdTriggered = false
+
+              private var currentSmsBatch = -1L
+              private var expectedSmsParts = 0
+              private var sentSmsParts = 0
+              private var deliveredSmsParts = 0
+              private var failedSmsParts = 0
+
+              private val smsSentReceiver = object : BroadcastReceiver() {
+                  override fun onReceive(context: Context?, intent: Intent?) {
+                      if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
+
+                      if (resultCode == Activity.RESULT_OK) {
+                          sentSmsParts++
+                      } else {
+                          failedSmsParts++
+                      }
+
+                      if (sentSmsParts + failedSmsParts >= expectedSmsParts) {
+                          status.text = if (failedSmsParts == 0) {
+                              "Alertas enviadas."
+                          } else {
+                              "Se enviaron alertas, pero hubo $failedSmsParts error(es) de SMS."
+                          }
+                      }
+                  }
+              }
+
+              private val smsDeliveredReceiver = object : BroadcastReceiver() {
+                  override fun onReceive(context: Context?, intent: Intent?) {
+                      if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
+                      if (resultCode == Activity.RESULT_OK) {
+                          deliveredSmsParts++
+                          if (deliveredSmsParts >= expectedSmsParts && failedSmsParts == 0) {
+                              status.text = "Alertas entregadas a tus contactos."
+                          }
+                      }
+                  }
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  mainPanel = findViewById(R.id.mainPanel)
+                  settingsPanel = findViewById(R.id.settingsPanel)
+                  name = findViewById(R.id.name)
+                  emergencyPhone = findViewById(R.id.emergencyPhone)
+                  smsPhone1 = findViewById(R.id.smsPhone1)
+                  smsPhone2 = findViewById(R.id.smsPhone2)
+                  smsPhone3 = findViewById(R.id.smsPhone3)
+                  smsPhone4 = findViewById(R.id.smsPhone4)
+                  status = findViewById(R.id.status)
+
+                  ContextCompat.registerReceiver(
+                      this,
+                      smsSentReceiver,
+                      IntentFilter(ACTION_SMS_SENT),
+                      ContextCompat.RECEIVER_EXPORTED
+                  )
+                  ContextCompat.registerReceiver(
+                      this,
+                      smsDeliveredReceiver,
+                      IntentFilter(ACTION_SMS_DELIVERED),
+                      ContextCompat.RECEIVER_EXPORTED
+                  )
+
+                  migrateOldSettings()
+                  loadSettings()
+                  requestNeededPermissions()
+
+                  findViewById<Button>(R.id.settingsButton).setOnClickListener {
+                      loadSettings()
+                      showSettings()
+                  }
+
+                  findViewById<Button>(R.id.saveButton).setOnClickListener {
+                      if (saveSettings()) {
+                          Toast.makeText(this, "Configuración guardada", Toast.LENGTH_SHORT).show()
+                          showMain()
+                      }
+                  }
+
+                  findViewById<Button>(R.id.cancelSettingsButton).setOnClickListener {
+                      if (hasMinimumConfiguration()) showMain()
+                  }
+
+                  val help = findViewById<Button>(R.id.helpButton)
+                  help.setOnTouchListener { _, event ->
+                      when (event.action) {
+                          MotionEvent.ACTION_DOWN -> {
+                              holdTriggered = false
+                              status.text = "Seguí apretando..."
+                              holdHandler.postDelayed({
+                                  holdTriggered = true
+                                  triggerEmergency()
+                              }, 3000)
+                              true
+                          }
+
+                          MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                              if (!holdTriggered) {
+                                  holdHandler.removeCallbacksAndMessages(null)
+                                  status.text = "Mantené apretado 3 segundos para pedir ayuda."
+                              }
+                              true
+                          }
+
+                          else -> false
+                      }
+                  }
+
+                  if (hasMinimumConfiguration()) showMain() else showSettings()
+              }
+
+              override fun onDestroy() {
+                  try { unregisterReceiver(smsSentReceiver) } catch (_: Exception) {}
+                  try { unregisterReceiver(smsDeliveredReceiver) } catch (_: Exception) {}
+                  super.onDestroy()
+              }
+
+              private fun prefs() = getSharedPreferences("cerca", MODE_PRIVATE)
+
+              private fun migrateOldSettings() {
+                  val p = prefs()
+                  if (p.getString("smsPhone1", "").isNullOrBlank()) {
+                      val oldSms = p.getString("smsPhone", "") ?: ""
+                      if (oldSms.isNotBlank()) {
+                          p.edit().putString("smsPhone1", oldSms).apply()
+                      }
+                  }
+              }
+
+              private fun loadSettings() {
+                  val p = prefs()
+                  name.setText(p.getString("name", ""))
+                  emergencyPhone.setText(p.getString("emergencyPhone", ""))
+                  smsPhone1.setText(p.getString("smsPhone1", ""))
+                  smsPhone2.setText(p.getString("smsPhone2", ""))
+                  smsPhone3.setText(p.getString("smsPhone3", ""))
+                  smsPhone4.setText(p.getString("smsPhone4", ""))
+              }
+
+              private fun saveSettings(): Boolean {
+                  val person = name.text.toString().trim()
+                  val callPhone = normalizePhone(emergencyPhone.text.toString())
+                  val sms1 = normalizePhone(smsPhone1.text.toString())
+
+                  if (person.isBlank()) {
+                      Toast.makeText(this, "Ingresá el nombre", Toast.LENGTH_LONG).show()
+                      return false
+                  }
+                  if (callPhone.isBlank()) {
+                      Toast.makeText(this, "Ingresá el teléfono para llamada", Toast.LENGTH_LONG).show()
+                      return false
+                  }
+                  if (sms1.isBlank()) {
+                      Toast.makeText(this, "Ingresá al menos un contacto para SMS", Toast.LENGTH_LONG).show()
+                      return false
+                  }
+
+                  prefs().edit()
+                      .putString("name", person)
+                      .putString("emergencyPhone", callPhone)
+                      .putString("smsPhone1", sms1)
+                      .putString("smsPhone2", normalizePhone(smsPhone2.text.toString()))
+                      .putString("smsPhone3", normalizePhone(smsPhone3.text.toString()))
+                      .putString("smsPhone4", normalizePhone(smsPhone4.text.toString()))
+                      .apply()
+                  return true
+              }
+
+              private fun hasMinimumConfiguration(): Boolean {
+                  val p = prefs()
+                  return !p.getString("name", "").isNullOrBlank() &&
+                          !p.getString("emergencyPhone", "").isNullOrBlank() &&
+                          !p.getString("smsPhone1", "").isNullOrBlank()
+              }
+
+              private fun showMain() {
+                  settingsPanel.visibility = View.GONE
+                  mainPanel.visibility = View.VISIBLE
+                  status.text = "Mantené apretado 3 segundos para pedir ayuda."
+              }
+
+              private fun showSettings() {
+                  mainPanel.visibility = View.GONE
+                  settingsPanel.visibility = View.VISIBLE
+              }
+
+              private fun requestNeededPermissions() {
+                  val missing = permissions.filter {
+                      ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+                  }
+                  if (missing.isNotEmpty()) {
+                      ActivityCompat.requestPermissions(
+                          this,
+                          missing.toTypedArray(),
+                          permissionRequestCode
+                      )
+                  }
+              }
+
+              private fun triggerEmergency() {
+                  if (!hasMinimumConfiguration()) {
+                      showSettings()
+                      Toast.makeText(this, "Completá la configuración primero", Toast.LENGTH_LONG).show()
+                      return
+                  }
+
+                  if (!hasCorePermissions()) {
+                      status.text = "Necesito permisos de Teléfono, SMS y Ubicación."
+                      requestNeededPermissions()
+                      return
+                  }
+
+                  status.text = "Activando H.E.L.P...."
+
+                  getLocation { mapsLink ->
+                      val person = prefs().getString("name", "")?.ifBlank { "La persona" } ?: "La persona"
+                      val message = "$person necesita ayuda. Ubicacion: $mapsLink"
+                      sendSmsToSavedContacts(message)
+                  }
+
+                  makeEmergencyCall()
+              }
+
+              private fun savedSmsContacts(): List<String> {
+                  val p = prefs()
+                  return listOf(
+                      p.getString("smsPhone1", "") ?: "",
+                      p.getString("smsPhone2", "") ?: "",
+                      p.getString("smsPhone3", "") ?: "",
+                      p.getString("smsPhone4", "") ?: ""
+                  ).map { normalizePhone(it) }.filter { it.isNotBlank() }.distinct()
+              }
+
+              @Suppress("DEPRECATION")
+              private fun smsManagerForDefaultSim(): SmsManager? {
+                  val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
+                  if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                      status.text = "Elegí una SIM predeterminada para SMS en Ajustes."
+                      return null
+                  }
+                  return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                      getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
+                  } else {
+                      SmsManager.getSmsManagerForSubscriptionId(subId)
+                  }
+              }
+
+              private fun sendSmsToSavedContacts(message: String) {
+                  val smsManager = smsManagerForDefaultSim() ?: return
+                  val contacts = savedSmsContacts()
+                  if (contacts.isEmpty()) {
+                      status.text = "No hay contactos SMS configurados."
+                      return
+                  }
+
+                  try {
+                      currentSmsBatch = System.currentTimeMillis()
+                      expectedSmsParts = 0
+                      sentSmsParts = 0
+                      deliveredSmsParts = 0
+                      failedSmsParts = 0
+
+                      val allParts = contacts.map { destination ->
+                          destination to smsManager.divideMessage(message)
+                      }
+                      expectedSmsParts = allParts.sumOf { it.second.size }
+
+                      var requestCode = (currentSmsBatch xor (currentSmsBatch ushr 32)).toInt()
+
+                      allParts.forEach { (destination, parts) ->
+                          val sentIntents = ArrayList<PendingIntent>()
+                          val deliveryIntents = ArrayList<PendingIntent>()
+
+                          for (i in parts.indices) {
+                              val sentIntent = Intent(ACTION_SMS_SENT)
+                                  .setPackage(packageName)
+                                  .putExtra(EXTRA_BATCH, currentSmsBatch)
+
+                              val deliveredIntent = Intent(ACTION_SMS_DELIVERED)
+                                  .setPackage(packageName)
+                                  .putExtra(EXTRA_BATCH, currentSmsBatch)
+
+                              val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+
+                              sentIntents.add(
+                                  PendingIntent.getBroadcast(
+                                      this,
+                                      requestCode++,
+                                      sentIntent,
+                                      flags
+                                  )
+                              )
+                              deliveryIntents.add(
+                                  PendingIntent.getBroadcast(
+                                      this,
+                                      requestCode++,
+                                      deliveredIntent,
+                                      flags
+                                  )
+                              )
+                          }
+
+                          if (parts.size == 1) {
+                              smsManager.sendTextMessage(
+                                  destination,
+                                  null,
+                                  parts[0],
+                                  sentIntents[0],
+                                  deliveryIntents[0]
+                              )
+                          } else {
+                              smsManager.sendMultipartTextMessage(
+                                  destination,
+                                  null,
+                                  parts,
+                                  sentIntents,
+                                  deliveryIntents
+                              )
+                          }
+                      }
+
+                      status.text = "Alertando a ${contacts.size} contacto(s)..."
+                  } catch (e: Exception) {
+                      status.text = "No se pudieron enviar los SMS."
+                  }
+              }
+
+              private fun normalizePhone(raw: String): String {
+                  val value = raw.trim()
+                  return value.filterIndexed { index, c ->
+                      c.isDigit() || (c == '+' && index == 0)
+                  }
+              }
+
+              private fun makeEmergencyCall() {
+                  val phone = normalizePhone(prefs().getString("emergencyPhone", "") ?: "")
+                  if (phone.isEmpty()) return
+
+                  if (
+                      ContextCompat.checkSelfPermission(
+                          this,
+                          Manifest.permission.CALL_PHONE
+                      ) != PackageManager.PERMISSION_GRANTED
+                  ) {
+                      requestNeededPermissions()
+                      return
+                  }
+
+                  val intent = Intent(
+                      Intent.ACTION_CALL,
+                      Uri.fromParts("tel", phone, null)
+                  )
+                  startActivity(intent)
+              }
+
+              private fun hasCorePermissions(): Boolean {
+                  return ContextCompat.checkSelfPermission(
+                      this,
+                      Manifest.permission.CALL_PHONE
+                  ) == PackageManager.PERMISSION_GRANTED &&
+                          ContextCompat.checkSelfPermission(
+                              this,
+                              Manifest.permission.SEND_SMS
+                          ) == PackageManager.PERMISSION_GRANTED &&
+                          (
+                              ContextCompat.checkSelfPermission(
+                                  this,
+                                  Manifest.permission.ACCESS_FINE_LOCATION
+                              ) == PackageManager.PERMISSION_GRANTED ||
+                              ContextCompat.checkSelfPermission(
+                                  this,
+                                  Manifest.permission.ACCESS_COARSE_LOCATION
+                              ) == PackageManager.PERMISSION_GRANTED
+                          )
+              }
+
+              private fun getLocation(callback: (String) -> Unit) {
+                  val fine = ContextCompat.checkSelfPermission(
+                      this,
+                      Manifest.permission.ACCESS_FINE_LOCATION
+                  )
+                  val coarse = ContextCompat.checkSelfPermission(
+                      this,
+                      Manifest.permission.ACCESS_COARSE_LOCATION
+                  )
+
+                  if (
+                      fine != PackageManager.PERMISSION_GRANTED &&
+                      coarse != PackageManager.PERMISSION_GRANTED
+                  ) {
+                      callback("Ubicacion no disponible")
+                      return
+                  }
+
+                  val client = LocationServices.getFusedLocationProviderClient(this)
+                  val cancellation = CancellationTokenSource()
+
+                  client.getCurrentLocation(
+                      Priority.PRIORITY_HIGH_ACCURACY,
+                      cancellation.token
+                  )
+                      .addOnSuccessListener { loc ->
+                          if (loc != null) {
+                              callback("https://maps.google.com/?q=${loc.latitude},${loc.longitude}")
+                          } else {
+                              client.lastLocation.addOnSuccessListener { last ->
+                                  if (last != null) {
+                                      callback("https://maps.google.com/?q=${last.latitude},${last.longitude}")
+                                  } else {
+                                      callback("Ubicacion no disponible")
+                                  }
+                              }
+                          }
+                      }
+                      .addOnFailureListener {
+                          client.lastLocation.addOnSuccessListener { last ->
+                              if (last != null) {
+                                  callback("https://maps.google.com/?q=${last.latitude},${last.longitude}")
+                              } else {
+                                  callback("Ubicacion no disponible")
+                              }
+                          }
+                      }
+              }
+          }
+          EOF
+
+      - name: Intentar guardar V3 en el repositorio
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app
+          git commit -m "H.E.L.P. V3" || true
+          git push || true
+
+      - name: Compilar APK H.E.L.P.
+        run: gradle assembleDebug --stacktrace
+
+      - name: Preparar ZIP instalable
+        shell: bash
+        run: |
+          mkdir -p help-v3
+          cp app/build/outputs/apk/debug/app-debug.apk help-v3/H.E.L.P.-V3.apk
+          cd help-v3
+          zip -9 ../HELP-V3-APK.zip H.E.L.P.-V3.apk
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HELP-V3-APK
+          path: HELP-V3-APK.zip
+          if-no-files-found: error

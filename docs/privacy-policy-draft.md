@@ -1,40 +1,23 @@
-# Política de Privacidad — borrador H.E.L.P
+# Política de privacidad de H.E.L.P — borrador
 
-Última actualización: 14 de agosto de 2026.
-
-H.E.L.P es una herramienta de seguridad personal que permite al usuario contactar personas elegidas previamente mediante una llamada telefónica y mensajes SMS que pueden incluir un enlace de Google Maps con la ubicación puntual del dispositivo.
+H.E.L.P utiliza permisos de teléfono, SMS y ubicación únicamente para ejecutar las funciones de seguridad solicitadas por el usuario.
 
 ## Datos utilizados
-La versión actual puede almacenar localmente en el dispositivo:
-- nombre;
-- email;
-- teléfono del usuario;
-- nombre y número del contacto de llamada;
-- nombre y número de hasta cuatro contactos para SMS;
-- fecha de inicio del período de prueba.
+- Datos de perfil ingresados por el usuario.
+- Contactos de emergencia seleccionados por el usuario.
+- Ubicación puntual obtenida al activar el pedido de ayuda.
 
-Estos datos se utilizan exclusivamente para prestar las funciones solicitadas por el usuario.
-
-## Contactos
-H.E.L.P permite elegir contactos mediante el selector de contactos del sistema Android. La aplicación accede solamente al contacto seleccionado por el usuario para obtener su nombre y número de teléfono.
-
-## Ubicación
-La ubicación se solicita al momento de activar el pedido de ayuda para crear un enlace de Google Maps. Esta versión no realiza seguimiento de ubicación en tiempo real ni monitoreo continuo en segundo plano.
+## Uso de la ubicación
+La ubicación se obtiene cuando el usuario activa PEDIR AYUDA. Se utiliza para generar un enlace de Google Maps que se incluye en el SMS enviado a los contactos configurados. H.E.L.P no realiza seguimiento de ubicación en tiempo real ni continuo.
 
 ## SMS y llamadas
-Cuando el usuario activa voluntariamente el botón de ayuda, H.E.L.P puede:
-- enviar un SMS a los contactos configurados;
-- iniciar una llamada al número configurado.
+H.E.L.P utiliza el permiso de SMS para enviar el aviso de ayuda a los contactos configurados y el permiso de teléfono para iniciar la llamada al contacto seleccionado.
 
-Los mensajes y llamadas pueden generar cargos según el plan del operador móvil del usuario.
+## Contactos
+La selección de contactos se realiza mediante el selector de contactos del sistema Android. H.E.L.P guarda localmente el nombre y número elegidos para poder ejecutar la función de ayuda.
 
-## Conservación y eliminación
-Los datos de configuración permanecen en el dispositivo hasta que el usuario los modifica, borra los datos de la aplicación o desinstala H.E.L.P.
+## Almacenamiento actual
+En la versión de prueba actual los datos de configuración se almacenan localmente en el dispositivo. Antes de la comercialización definitiva, cualquier servicio de cuenta o suscripción conectado a servidores deberá quedar reflejado en esta política.
 
-## Seguridad
-H.E.L.P procura reducir al mínimo los datos utilizados y no debe almacenar información de tarjetas de crédito dentro de la aplicación. Las suscripciones de la versión pública se procesarán mediante Google Play.
-
-## Importante
-H.E.L.P no reemplaza servicios médicos, policiales, de bomberos ni servicios públicos de emergencia. El funcionamiento depende de permisos, señal móvil, GPS, batería y disponibilidad de la red.
-
-Antes de la publicación comercial se deberán completar los datos legales del responsable, domicilio/canal de contacto y cualquier tratamiento adicional que se incorpore al producto.
+## Contacto
+El correo de soporte definitivo se completará antes de la publicación pública.

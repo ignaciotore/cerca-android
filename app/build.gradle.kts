@@ -16,12 +16,11 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "6.0"
+        versionCode = 9
+        versionName = "7.0"
     }
 
     val helpKeystorePath = System.getenv("HELP_KEYSTORE_PATH")
-
     if (!helpKeystorePath.isNullOrBlank()) {
         signingConfigs {
             create("helpRelease") {
@@ -43,7 +42,7 @@ android {
     }
 
     buildFeatures {
-        viewBinding = false
+        buildConfig = true 
     }
 }
 

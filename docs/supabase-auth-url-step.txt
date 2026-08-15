@@ -1,0 +1,13 @@
+CONFIGURACIÓN SUPABASE QUE DEBE QUEDAR HECHA ANTES DE CONSIDERAR CERRADO LO NO-GOOGLE
+
+Authentication > URL Configuration
+
+Site URL:
+https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/help-web?page=privacy
+
+Redirect URLs (agregar):
+https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/help-web?page=welcome
+https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/help-web?page=reset
+https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/help-web?page=privacy
+
+Esto permite que la confirmación de email y la recuperación de contraseña vuelvan a H.E.L.P y no terminen en localhost.

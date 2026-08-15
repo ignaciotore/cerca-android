@@ -13,16 +13,24 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import java.security.MessageDigest
 
 class BillingManager(
     private val activity: Activity,
     private val onEntitlementChanged: (Boolean) -> Unit,
+    private val onPurchaseTokenAvailable: (String) -> Unit,
     private val onMessage: (String) -> Unit
 ) : PurchasesUpdatedListener {
 
     companion object {
         const val SUBSCRIPTION_PRODUCT_ID = "help_monthly"
         private const val PREFS = "help_prefs"
+
+        fun obfuscateAccountId(userId: String): String {
+            return MessageDigest.getInstance("SHA-256")
+                .digest(userId.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+        }
     }
 
     private lateinit var billingClient: BillingClient
@@ -80,6 +88,7 @@ class BillingManager(
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(listOf(product))
             .build()
+
         billingClient.queryProductDetailsAsync(params) { billingResult, result ->
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 subscriptionProductDetails = result.productDetailsList.firstOrNull()
@@ -88,28 +97,33 @@ class BillingManager(
         }
     }
 
-    fun launchSubscription() {
+    fun launchSubscription(obfuscatedAccountId: String) {
         if (!billingReady) {
             onMessage("Google Play todavía no está listo. Probá nuevamente en unos segundos.")
             return
         }
+
         val details = subscriptionProductDetails
         if (details == null) {
-            querySubscriptionProduct { launchSubscription() }
+            querySubscriptionProduct { launchSubscription(obfuscatedAccountId) }
             onMessage("Preparando la suscripción…")
             return
         }
-        val offer = details.subscriptionOfferDetails?.firstOrNull()
+
+        val offers = details.subscriptionOfferDetails.orEmpty()
+        val offer = offers.firstOrNull { "trial30" in it.offerTags } ?: offers.firstOrNull()
         if (offer == null) {
             onMessage("La suscripción todavía no está configurada en Google Play.")
             return
         }
+
         val productParams = BillingFlowParams.ProductDetailsParams.newBuilder()
             .setProductDetails(details)
             .setOfferToken(offer.offerToken)
             .build()
         val flowParams = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(listOf(productParams))
+            .setObfuscatedAccountId(obfuscatedAccountId)
             .build()
         val result = billingClient.launchBillingFlow(activity, flowParams)
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
@@ -117,10 +131,7 @@ class BillingManager(
         }
     }
 
-    override fun onPurchasesUpdated(
-        billingResult: BillingResult,
-        purchases: MutableList<Purchase>?
-    ) {
+    override fun onPurchasesUpdated(billingResult: BillingResult, purchases: MutableList<Purchase>?) {
         when (billingResult.responseCode) {
             BillingClient.BillingResponseCode.OK -> processPurchases(purchases.orEmpty())
             BillingClient.BillingResponseCode.USER_CANCELED -> onMessage("Compra cancelada.")
@@ -137,6 +148,10 @@ class BillingManager(
             .edit()
             .putBoolean("subscriptionActive", active)
             .apply()
+
+        relevant
+            .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            .forEach { purchase -> onPurchaseTokenAvailable(purchase.purchaseToken) }
 
         relevant
             .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED && !it.isAcknowledged }

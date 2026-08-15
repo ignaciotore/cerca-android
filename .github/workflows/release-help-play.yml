@@ -1,0 +1,43 @@
+name: Generar H.E.L.P release firmado
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Preparar upload key
+        shell: bash
+        env:
+          HELP_UPLOAD_KEYSTORE_B64: ${{ secrets.HELP_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          set -e
+          test -n "$HELP_UPLOAD_KEYSTORE_B64"
+          printf '%s' "$HELP_UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/help-upload.jks"
+      - name: Compilar release firmado
+        env:
+          HELP_KEYSTORE_PATH: ${{ runner.temp }}/help-upload.jks
+          HELP_KEYSTORE_PASSWORD: ${{ secrets.HELP_KEYSTORE_PASSWORD }}
+          HELP_KEY_ALIAS: ${{ secrets.HELP_KEY_ALIAS }}
+          HELP_KEY_PASSWORD: ${{ secrets.HELP_KEY_PASSWORD }}
+        run: gradle --no-daemon :app:bundleRelease :app:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HELP-RELEASE-FIRMADO
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/app-release.apk
+            play-store/icon-512.png
+            play-store/feature-graphic-1024x500.png
+            docs/privacy.html

@@ -1,4 +1,4 @@
-package com.cerca.mvp
+package com.help.seguridad
 
 import android.Manifest
 import android.app.Activity
@@ -24,6 +24,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -47,8 +48,8 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_SMS4_CONTACT = 205
         private const val REQ_PERMISSIONS = 301
 
-        private const val ACTION_SMS_SENT = "com.cerca.mvp.HELP_SMS_SENT"
-        private const val ACTION_SMS_DELIVERED = "com.cerca.mvp.HELP_SMS_DELIVERED"
+        private const val ACTION_SMS_SENT = "com.help.seguridad.HELP_SMS_SENT"
+        private const val ACTION_SMS_DELIVERED = "com.help.seguridad.HELP_SMS_DELIVERED"
         private const val EXTRA_BATCH = "batch"
     }
 
@@ -77,6 +78,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeSmsSummary: TextView
     private lateinit var profileData: TextView
     private lateinit var subscriptionStatus: TextView
+
+    private lateinit var billingManager: BillingManager
 
     private var editingProfile = false
 
@@ -132,6 +135,20 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         bindViews()
+        billingManager = BillingManager(
+            activity = this,
+            onEntitlementChanged = {
+                runOnUiThread {
+                    if (prefs().getBoolean("registered_v5", false)) {
+                        if (canUseHelp()) showHome() else showExpired()
+                    }
+                }
+            },
+            onMessage = { message ->
+                runOnUiThread { toast(message) }
+            }
+        )
+        billingManager.start()
         migrateLegacyData()
         loadContactState()
         registerSmsReceivers()
@@ -139,7 +156,13 @@ class MainActivity : AppCompatActivity() {
         showInitialScreen()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::billingManager.isInitialized) billingManager.refreshPurchases()
+    }
+
     override fun onDestroy() {
+        if (::billingManager.isInitialized) billingManager.close()
         try { unregisterReceiver(smsSentReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(smsDeliveredReceiver) } catch (_: Exception) {}
         super.onDestroy()
@@ -208,7 +231,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.saveSetupButton).setOnClickListener {
             if (saveProfile()) {
                 editingProfile = false
-                requestEmergencyPermissionsIfNeeded()
+                showPermissionDisclosureIfNeeded()
                 showHome()
             }
         }
@@ -232,11 +255,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.subscribeButton).setOnClickListener {
-            showSubscriptionPendingMessage()
+            billingManager.launchSubscription()
         }
 
         findViewById<Button>(R.id.expiredSubscribeButton).setOnClickListener {
-            showSubscriptionPendingMessage()
+            billingManager.launchSubscription()
         }
 
         findViewById<Button>(R.id.expiredProfileButton).setOnClickListener {
@@ -632,6 +655,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun canUseHelp(): Boolean = isSubscriptionActive() || isTrialValid()
 
+    private fun showPermissionDisclosureIfNeeded() {
+        if (hasEmergencyPermissions()) return
+
+        AlertDialog.Builder(this)
+            .setTitle("Permisos necesarios para pedir ayuda")
+            .setMessage(
+                "H.E.L.P usa el permiso de teléfono para llamar al contacto que elegiste, " +
+                "el permiso de SMS para enviar el aviso de emergencia a tus contactos y " +
+                "la ubicación únicamente cuando activás PEDIR AYUDA, para incluir un enlace puntual de Google Maps. " +
+                "No realiza seguimiento de ubicación en tiempo real ni lee tus mensajes."
+            )
+            .setNegativeButton("AHORA NO", null)
+            .setPositiveButton("CONTINUAR") { _, _ -> requestEmergencyPermissionsIfNeeded() }
+            .show()
+    }
+
     private fun requestEmergencyPermissionsIfNeeded() {
         val permissions = mutableListOf(
             Manifest.permission.CALL_PHONE,
@@ -680,7 +719,7 @@ class MainActivity : AppCompatActivity() {
     private fun triggerHelp() {
         if (!hasEmergencyPermissions()) {
             status.text = "Necesito permisos de teléfono, SMS y ubicación."
-            requestEmergencyPermissionsIfNeeded()
+            showPermissionDisclosureIfNeeded()
             return
         }
 

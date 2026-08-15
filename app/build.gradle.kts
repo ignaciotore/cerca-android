@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.cerca.mvp"
+    namespace = "com.help.seguridad"
     compileSdk = 36
 
     compileOptions {
@@ -13,11 +13,33 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.cerca.mvp"
+        applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "5.1"
+        versionCode = 7
+        versionName = "6.0"
+    }
+
+    val helpKeystorePath = System.getenv("HELP_KEYSTORE_PATH")
+
+    if (!helpKeystorePath.isNullOrBlank()) {
+        signingConfigs {
+            create("helpRelease") {
+                storeFile = file(helpKeystorePath)
+                storePassword = System.getenv("HELP_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("HELP_KEY_ALIAS")
+                keyPassword = System.getenv("HELP_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (!helpKeystorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("helpRelease")
+            }
+        }
     }
 
     buildFeatures {
@@ -30,4 +52,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.android.billingclient:billing:9.1.0")
 }

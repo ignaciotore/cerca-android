@@ -9,7 +9,8 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:label="H.E.L.P"
         android:supportsRtl="true"
         android:theme="@style/Theme.Help">

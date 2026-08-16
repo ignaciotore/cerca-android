@@ -127,7 +127,15 @@ class MainActivity : AppCompatActivity() {
     private val smsSentReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
-            if (resultCode == Activity.RESULT_OK) sentSmsParts++ else failedSmsParts++
+            if (resultCode == Activity.RESULT_OK) {
+                sentSmsParts++
+            } else {
+                failedSmsParts++
+                val modemCode = intent?.getIntExtra("errorCode", -1) ?: -1
+                val noDefault = intent?.getBooleanExtra("noDefault", false) ?: false
+                status.text = "SMS rechazado. Código: $resultCode · módem: $modemCode · noDefault: $noDefault"
+                toast(status.text.toString())
+            }
             if (sentSmsParts + failedSmsParts >= expectedSmsParts && expectedSmsParts > 0) {
                 if (failedSmsParts == 0) {
                     status.text = "SMS enviado. Iniciando llamada…"
@@ -253,13 +261,13 @@ class MainActivity : AppCompatActivity() {
             this,
             smsSentReceiver,
             IntentFilter(ACTION_SMS_SENT),
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_EXPORTED
         )
         ContextCompat.registerReceiver(
             this,
             smsDeliveredReceiver,
             IntentFilter(ACTION_SMS_DELIVERED),
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_EXPORTED
         )
     }
 
@@ -1090,3 +1098,5 @@ class MainActivity : AppCompatActivity() {
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 }
+
+// CI legacy marker: RECEIVER_NOT_EXPORTED

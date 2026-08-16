@@ -857,7 +857,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hasEmergencyPermissions(): Boolean {
-        if (BuildConfig.DEBUG) return true
         val phone = ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
         val sms = ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -867,18 +866,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun triggerHelp() {
         if (emergencyInProgress) return
-        if (BuildConfig.DEBUG) {
-            emergencyInProgress = true
-            status.text = "DEMO · Pedido de ayuda simulado correctamente. No se enviaron SMS ni llamada."
-            Handler(Looper.getMainLooper()).postDelayed({ emergencyInProgress = false }, 1200L)
-            return
-        }
-        if (BuildConfig.DEBUG) {
-            emergencyInProgress = true
-            status.text = "DEMO · Pedido de ayuda simulado correctamente. No se enviaron SMS ni llamada."
-            Handler(Looper.getMainLooper()).postDelayed({ emergencyInProgress = false }, 1200L)
-            return
-        }
         if (!hasEmergencyPermissions()) {
             status.text = "Necesito permisos de teléfono, SMS y ubicación."
             showPermissionDisclosureIfNeeded()

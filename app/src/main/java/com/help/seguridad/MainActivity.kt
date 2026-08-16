@@ -815,6 +815,15 @@ class MainActivity : AppCompatActivity() {
             REQ_SMS3_CONTACT -> { sms3Name = pickedName; sms3Phone = pickedPhone }
             REQ_SMS4_CONTACT -> { sms4Name = pickedName; sms4Phone = pickedPhone }
         }
+        // Persistimos cada selección inmediatamente. Algunos selectores de contactos
+        // recrean la Activity al volver y, si esperamos al botón Guardar, se puede perder.
+        contactPrefs().edit()
+            .putString("callName", callName).putString("callPhone", callPhone)
+            .putString("sms1Name", sms1Name).putString("sms1Phone", sms1Phone)
+            .putString("sms2Name", sms2Name).putString("sms2Phone", sms2Phone)
+            .putString("sms3Name", sms3Name).putString("sms3Phone", sms3Phone)
+            .putString("sms4Name", sms4Name).putString("sms4Phone", sms4Phone)
+            .commit()
         updateContactDisplays()
     }
 
@@ -858,6 +867,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun triggerHelp() {
         if (emergencyInProgress) return
+        if (BuildConfig.DEBUG) {
+            emergencyInProgress = true
+            status.text = "DEMO · Pedido de ayuda simulado correctamente. No se enviaron SMS ni llamada."
+            Handler(Looper.getMainLooper()).postDelayed({ emergencyInProgress = false }, 1200L)
+            return
+        }
         if (BuildConfig.DEBUG) {
             emergencyInProgress = true
             status.text = "DEMO · Pedido de ayuda simulado correctamente. No se enviaron SMS ni llamada."

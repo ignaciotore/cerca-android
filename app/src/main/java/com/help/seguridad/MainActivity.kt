@@ -33,6 +33,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import java.time.Instant
+import java.text.Normalizer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
@@ -129,16 +130,19 @@ class MainActivity : AppCompatActivity() {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
             if (resultCode == Activity.RESULT_OK) {
                 sentSmsParts++
+                appPrefs().edit().putString("last_sms_diag", "ENVIADO $sentSmsParts/$expectedSmsParts").apply()
             } else {
                 failedSmsParts++
                 val modemCode = intent?.getIntExtra("errorCode", -1) ?: -1
                 val noDefault = intent?.getBooleanExtra("noDefault", false) ?: false
                 status.text = "SMS rechazado. Código: $resultCode · módem: $modemCode · noDefault: $noDefault"
+                appPrefs().edit().putString("last_sms_diag", status.text.toString()).apply()
                 toast(status.text.toString())
             }
             if (sentSmsParts + failedSmsParts >= expectedSmsParts && expectedSmsParts > 0) {
                 if (failedSmsParts == 0) {
                     status.text = "SMS enviado. Iniciando llamada…"
+                    toast("SMS enviado correctamente.")
                 } else {
                     status.text = "El SMS tuvo un problema. Iniciando llamada igual…"
                     toast("No pude confirmar el envío de uno o más SMS.")
@@ -155,6 +159,8 @@ class MainActivity : AppCompatActivity() {
                 deliveredSmsParts++
                 if (deliveredSmsParts >= expectedSmsParts && expectedSmsParts > 0 && failedSmsParts == 0) {
                     status.text = "Tus contactos recibieron el aviso."
+                    appPrefs().edit().putString("last_sms_diag", "ENTREGADO $deliveredSmsParts/$expectedSmsParts").apply()
+                    toast("SMS entregado al contacto.")
                 }
             }
         }
@@ -888,18 +894,30 @@ class MainActivity : AppCompatActivity() {
         getCurrentLocation { latitude, longitude ->
             val personName = contactPrefs().getString("display_name", "").orEmpty().ifBlank { "Una persona" }
             val mapsLink = if (latitude != null && longitude != null) {
-                "https://maps.google.com/?q=$latitude,$longitude"
+                val coords = String.format(java.util.Locale.US, "%.6f,%.6f", latitude, longitude)
+                "https://maps.google.com/?q=$coords"
             } else {
-                "Ubicación no disponible"
+                "Ubicacion no disponible"
             }
-            val message = "H.E.L.P · $personName necesita ayuda. Ubicación: $mapsLink"
+            val safeName = Normalizer.normalize(personName, Normalizer.Form.NFD)
+                .replace("\\p{M}+".toRegex(), "")
+                .replace(Regex("[^A-Za-z0-9 ._-]"), "")
+                .trim().take(40).ifBlank { "Una persona" }
+            // Mensaje corto y GSM-7 para que salga como un único SMS siempre que sea posible.
+            val message = "HELP - $safeName necesita ayuda. Ubicacion: $mapsLink"
             emergencyCallPending = true
             val smsQueued = sendSmsToContacts(message)
             if (!smsQueued) {
                 Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 700L)
             } else {
                 // Seguridad: si la red no devuelve callback del SMS, la llamada no queda bloqueada.
-                Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 6000L)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (emergencyCallPending && sentSmsParts + failedSmsParts == 0) {
+                        appPrefs().edit().putString("last_sms_diag", "SIN CALLBACK DEL MODEM").apply()
+                        toast("El teléfono no confirmó el SMS; inicio la llamada igual.")
+                    }
+                    makeDirectCall()
+                }, 8000L)
             }
         }
     }
@@ -992,34 +1010,49 @@ class MainActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     private fun smsManagerForDefaultSim(): SmsManager? {
         return try {
-            val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
-            if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
-                } else {
-                    SmsManager.getSmsManagerForSubscriptionId(subId)
-                }
-            } else {
-                // Fallback para equipos con una sola SIM o sin preferencia SMS explícita.
-                SmsManager.getDefault()
+            // Más robusto en una sola SIM: si no hay preferencia explícita devuelve la SIM activa.
+            var subId = SmsManager.getDefaultSmsSubscriptionId()
+            if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                subId = SubscriptionManager.getDefaultSmsSubscriptionId()
             }
-        } catch (_: Exception) {
-            try { SmsManager.getDefault() } catch (_: Exception) { null }
+            if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                status.text = "No hay una SIM definida para SMS. Elegí una SIM predeterminada en Ajustes."
+                toast(status.text.toString())
+                return null
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
+            } else {
+                SmsManager.getSmsManagerForSubscriptionId(subId)
+            }
+        } catch (e: Exception) {
+            status.text = "No pude acceder a la SIM para SMS: ${e.message ?: "sin detalle"}"
+            toast(status.text.toString())
+            null
         }
     }
 
     private fun sendSmsToContacts(message: String): Boolean {
         val manager = smsManagerForDefaultSim()
-        if (manager == null) { status.text = "No pude acceder al servicio de SMS. La llamada se realizará igual."; return false }
+            ?: run { status.text = "No pude acceder al servicio de SMS. La llamada se realizará igual."; return false }
         val contacts = savedSmsContacts()
-        if (contacts.isEmpty()) { status.text = "No hay contactos para SMS. La llamada se realizará igual."; return false }
+        if (contacts.isEmpty()) {
+            status.text = "No hay contactos para SMS. La llamada se realizará igual."
+            return false
+        }
         try {
             currentSmsBatch = System.currentTimeMillis()
-            expectedSmsParts = 0; sentSmsParts = 0; failedSmsParts = 0; deliveredSmsParts = 0
-            val allParts = contacts.map { it.second to manager.divideMessage(message) }
-            expectedSmsParts = allParts.sumOf { it.second.size }
+            expectedSmsParts = 0
+            sentSmsParts = 0
+            failedSmsParts = 0
+            deliveredSmsParts = 0
             var requestCode = (currentSmsBatch xor (currentSmsBatch ushr 32)).toInt()
-            allParts.forEach { (destination, parts) ->
+
+            contacts.forEach { (_, rawDestination) ->
+                val destination = normalizePhone(rawDestination)
+                if (destination.isBlank()) return@forEach
+                val parts = manager.divideMessage(message)
+                expectedSmsParts += parts.size
                 val sentIntents = ArrayList<PendingIntent>()
                 val deliveredIntents = ArrayList<PendingIntent>()
                 parts.indices.forEach {
@@ -1029,14 +1062,25 @@ class MainActivity : AppCompatActivity() {
                     sentIntents.add(PendingIntent.getBroadcast(this, requestCode++, sent, flags))
                     deliveredIntents.add(PendingIntent.getBroadcast(this, requestCode++, delivered, flags))
                 }
-                if (parts.size == 1) manager.sendTextMessage(destination, null, parts[0], sentIntents[0], deliveredIntents[0])
-                else manager.sendMultipartTextMessage(destination, null, parts, sentIntents, deliveredIntents)
+                if (parts.size == 1) {
+                    manager.sendTextMessage(destination, null, parts[0], sentIntents[0], deliveredIntents[0])
+                } else {
+                    manager.sendMultipartTextMessage(destination, null, parts, sentIntents, deliveredIntents)
+                }
             }
+
+            if (expectedSmsParts == 0) {
+                status.text = "El número de SMS no es válido. La llamada se realizará igual."
+                return false
+            }
+            appPrefs().edit().putString("last_sms_diag", "SOLICITADO ${contacts.size} contacto(s), $expectedSmsParts parte(s)").apply()
             status.text = "Enviando SMS a ${contacts.size} contacto(s)…"
             return true
         } catch (e: Exception) {
-            status.text = "No pude enviar el SMS. La llamada se realizará igual."
-            toast("Error al enviar SMS: ${e.message ?: "sin detalle"}")
+            val detail = e.message ?: e.javaClass.simpleName
+            appPrefs().edit().putString("last_sms_diag", "EXCEPCION $detail").apply()
+            status.text = "No pude enviar el SMS: $detail"
+            toast(status.text.toString())
             return false
         }
     }

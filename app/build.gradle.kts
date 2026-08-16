@@ -33,6 +33,10 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".demo"
+            versionNameSuffix = "-demo"
+        }
         getByName("release") {
             isMinifyEnabled = false
             if (!helpKeystorePath.isNullOrBlank()) {

@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         private const val ACTION_SMS_SENT = "com.help.seguridad.HELP_SMS_SENT"
         private const val ACTION_SMS_DELIVERED = "com.help.seguridad.HELP_SMS_DELIVERED"
         private const val EXTRA_BATCH = "batch"
+        const val EXTRA_AUTO_TRIGGER_HELP = "com.help.seguridad.AUTO_TRIGGER_HELP"
     }
 
     private lateinit var loadingPanel: LinearLayout
@@ -181,6 +182,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_AUTO_TRIGGER_HELP, false) && currentSession != null) routeAfterAuthentication()
+    }
+
     override fun onResume() {
         super.onResume()
         if (::billingManager.isInitialized) billingManager.refreshPurchases()
@@ -278,6 +285,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.profileButton).setOnClickListener { showProfile() }
+        findViewById<Button>(R.id.quickAccessButton).setOnClickListener { startActivity(Intent(this, QuickAccessSettingsActivity::class.java)) }
         findViewById<Button>(R.id.editProfileButton).setOnClickListener { showSetup(editing = true) }
         findViewById<Button>(R.id.profileBackButton).setOnClickListener { routeAfterAuthentication() }
         findViewById<Button>(R.id.logoutButton).setOnClickListener { confirmLogout() }
@@ -663,6 +671,13 @@ class MainActivity : AppCompatActivity() {
         }
         status.text = "Mantené apretado 3 segundos para pedir ayuda."
         showOnly(homePanel)
+        maybeTriggerShortcutEmergency()
+    }
+
+    private fun maybeTriggerShortcutEmergency() {
+        if (!intent.getBooleanExtra(EXTRA_AUTO_TRIGGER_HELP, false) || emergencyInProgress) return
+        intent.removeExtra(EXTRA_AUTO_TRIGGER_HELP)
+        Handler(Looper.getMainLooper()).postDelayed({ triggerHelp() }, 180L)
     }
 
     private fun showProfile() {

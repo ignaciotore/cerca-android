@@ -101,6 +101,7 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var currentSession: SupabaseApi.Session? = null
     private var editingProfile = false
     private var emergencyInProgress = false
+    private var emergencyCallPending = false
 
     private var callName = ""
     private var callPhone = ""
@@ -128,11 +129,13 @@ class MainActivity : AppCompatActivity() {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
             if (resultCode == Activity.RESULT_OK) sentSmsParts++ else failedSmsParts++
             if (sentSmsParts + failedSmsParts >= expectedSmsParts && expectedSmsParts > 0) {
-                status.text = if (failedSmsParts == 0) {
-                    "Aviso enviado. Iniciando llamada…"
+                if (failedSmsParts == 0) {
+                    status.text = "SMS enviado. Iniciando llamada…"
                 } else {
-                    "La llamada se realizará, pero hubo un problema con uno o más SMS."
+                    status.text = "El SMS tuvo un problema. Iniciando llamada igual…"
+                    toast("No pude confirmar el envío de uno o más SMS.")
                 }
+                Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 450L)
             }
         }
     }
@@ -882,8 +885,14 @@ class MainActivity : AppCompatActivity() {
                 "Ubicación no disponible"
             }
             val message = "H.E.L.P · $personName necesita ayuda. Ubicación: $mapsLink"
-            sendSmsToContacts(message)
-            Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 900L)
+            emergencyCallPending = true
+            val smsQueued = sendSmsToContacts(message)
+            if (!smsQueued) {
+                Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 700L)
+            } else {
+                // Seguridad: si la red no devuelve callback del SMS, la llamada no queda bloqueada.
+                Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 6000L)
+            }
         }
     }
 
@@ -974,21 +983,28 @@ class MainActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     private fun smsManagerForDefaultSim(): SmsManager? {
-        val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
-        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            status.text = "Elegí una SIM predeterminada para SMS en Ajustes."
-            return null
+        return try {
+            val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
+            if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
+                } else {
+                    SmsManager.getSmsManagerForSubscriptionId(subId)
+                }
+            } else {
+                // Fallback para equipos con una sola SIM o sin preferencia SMS explícita.
+                SmsManager.getDefault()
+            }
+        } catch (_: Exception) {
+            try { SmsManager.getDefault() } catch (_: Exception) { null }
         }
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getSystemService(SmsManager::class.java).createForSubscriptionId(subId)
-        } else SmsManager.getSmsManagerForSubscriptionId(subId)
     }
 
-    private fun sendSmsToContacts(message: String) {
+    private fun sendSmsToContacts(message: String): Boolean {
         val manager = smsManagerForDefaultSim()
-        if (manager == null) { status.text = "No pude elegir una SIM para SMS. La llamada se realizará igual."; return }
+        if (manager == null) { status.text = "No pude acceder al servicio de SMS. La llamada se realizará igual."; return false }
         val contacts = savedSmsContacts()
-        if (contacts.isEmpty()) { status.text = "No hay contactos para SMS. La llamada se realizará igual."; return }
+        if (contacts.isEmpty()) { status.text = "No hay contactos para SMS. La llamada se realizará igual."; return false }
         try {
             currentSmsBatch = System.currentTimeMillis()
             expectedSmsParts = 0; sentSmsParts = 0; failedSmsParts = 0; deliveredSmsParts = 0
@@ -1008,11 +1024,18 @@ class MainActivity : AppCompatActivity() {
                 if (parts.size == 1) manager.sendTextMessage(destination, null, parts[0], sentIntents[0], deliveredIntents[0])
                 else manager.sendMultipartTextMessage(destination, null, parts, sentIntents, deliveredIntents)
             }
-            status.text = "Enviando aviso a ${contacts.size} contacto(s)…"
-        } catch (_: Exception) { status.text = "No pude enviar el SMS. La llamada se realizará igual." }
+            status.text = "Enviando SMS a ${contacts.size} contacto(s)…"
+            return true
+        } catch (e: Exception) {
+            status.text = "No pude enviar el SMS. La llamada se realizará igual."
+            toast("Error al enviar SMS: ${e.message ?: "sin detalle"}")
+            return false
+        }
     }
 
     private fun makeDirectCall() {
+        if (!emergencyCallPending) return
+        emergencyCallPending = false
         val phone = normalizePhone(callPhone)
         if (phone.isBlank()) { emergencyInProgress = false; status.text = "No hay un número configurado para llamada."; return }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {

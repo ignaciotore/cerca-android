@@ -1,19 +1,26 @@
-# Ficha de Google Play — H.E.L.P
+# CERCA — ficha de Google Play
 
-**Nombre:** H.E.L.P
+**Nombre de la app:** CERCA
 
-**Descripción corta:**
-Pedí ayuda rápidamente con SMS, ubicación de Google Maps y una llamada a tu contacto.
+**Descripción corta:**  
+Tu red de confianza para pedir ayuda y compartir tu ubicación en una emergencia.
 
-**Descripción completa:**
-H.E.L.P te permite configurar una red de contactos de confianza para pedir ayuda de forma simple cuando la necesitás.
+**Descripción completa:**  
+CERCA te conecta con las personas que elegís para que puedas pedir ayuda de forma simple y rápida.
 
-Mantené presionado PEDIR AYUDA durante 3 segundos y H.E.L.P obtiene una ubicación puntual, envía un SMS de emergencia con un enlace de Google Maps a los contactos que elegiste y luego inicia la llamada al contacto configurado.
+Configurá una vez tu contacto de llamada y hasta cuatro contactos que recibirán el SMS. Cuando activás PEDIR AYUDA, CERCA obtiene tu ubicación puntual, envía un aviso con un enlace de Google Maps y luego inicia la llamada configurada.
 
-Podés elegir hasta cuatro contactos para recibir el SMS y un contacto para la llamada. Los contactos de emergencia permanecen guardados localmente en tu teléfono.
+También podés configurar accesos rápidos para iniciar el pedido de ayuda sin tener que buscar la app.
 
-H.E.L.P no realiza seguimiento continuo de ubicación ni lee tus mensajes. La ubicación se solicita únicamente cuando activás PEDIR AYUDA.
+Funciones principales:
+- Pedido de ayuda con confirmación previa.
+- SMS a tus contactos de confianza.
+- Ubicación puntual mediante Google Maps.
+- Llamada automática al contacto configurado.
+- Hasta cuatro contactos para los avisos.
+- Acceso rápido configurable desde el teléfono.
+- Gestión de contactos y suscripción desde la app.
 
-La cuenta H.E.L.P permite mantener tu período de prueba y administrar tu acceso. La app incluye recuperación de contraseña, cierre de sesión y eliminación de cuenta.
+**Subtítulo de marca:** Seguridad cerca de vos.
 
-Importante: H.E.L.P es una herramienta complementaria de seguridad personal y no reemplaza a los servicios públicos de emergencia.
+**Package existente:** com.help.seguridad (no cambiar).

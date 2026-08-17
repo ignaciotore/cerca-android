@@ -422,7 +422,7 @@ class MainActivity : AppCompatActivity() {
                     showLogin()
                     AlertDialog.Builder(this)
                         .setTitle("Revisá tu email")
-                        .setMessage("Te enviamos un mensaje para confirmar la cuenta. Después de confirmarla, volvé a H.E.L.P e iniciá sesión.")
+                        .setMessage("Te enviamos un mensaje para confirmar la cuenta. Después de confirmarla, volvé a CERCA e iniciá sesión.")
                         .setPositiveButton("ENTENDIDO", null)
                         .show()
                 }
@@ -731,7 +731,7 @@ class MainActivity : AppCompatActivity() {
             .ifBlank { accountCache().getString("full_name", "").orEmpty() }
         profileData.text = "Nombre: ${displayName.ifBlank { "—" }}\nEmail: ${session.email}\nVersión: ${BuildConfig.VERSION_NAME}"
         subscriptionStatus.text = when {
-            isSubscriptionActiveCached() -> "Activa. H.E.L.P está habilitada."
+            isSubscriptionActiveCached() -> "Activa. CERCA está habilitada."
             daysRemaining() > 0 -> "Prueba gratuita: quedan ${daysRemaining()} día(s)."
             else -> "La prueba gratuita terminó."
         }
@@ -884,7 +884,7 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Permisos necesarios para pedir ayuda")
             .setMessage(
-                "H.E.L.P usa el teléfono para llamar al contacto que elegiste, SMS para enviar la alerta y la ubicación únicamente al activar PEDIR AYUDA para incluir un enlace puntual de Google Maps. No realiza seguimiento continuo ni lee tus mensajes."
+                "CERCA usa el teléfono para llamar al contacto que elegiste, SMS para enviar la alerta y la ubicación únicamente al activar PEDIR AYUDA para incluir un enlace puntual de Google Maps. No realiza seguimiento continuo ni lee tus mensajes."
             )
             .setNegativeButton("AHORA NO", null)
             .setPositiveButton("CONTINUAR") { _, _ -> requestEmergencyPermissionsIfNeeded() }

@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources><string name="help_accessibility_description">Permite usar una combinación configurable de las teclas de volumen para iniciar H.E.L.P. No lee ni recopila contenido de pantalla.</string><string name="help_widget_description">Botón de acceso rápido para iniciar un pedido de ayuda con confirmación previa.</string></resources>
+<resources><string name="app_name">CERCA</string><string name="help_accessibility_description">Permite usar una combinación configurable de las teclas de volumen para iniciar CERCA. No lee ni recopila contenido de pantalla.</string><string name="help_widget_description">Botón de acceso rápido de CERCA para iniciar un pedido de ayuda con confirmación previa.</string></resources>

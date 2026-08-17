@@ -1,4 +1,1 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="4dp">
-<Button android:id="@+id/widgetHelpButton" android:layout_width="match_parent" android:layout_height="match_parent" android:minWidth="120dp" android:minHeight="72dp" android:text="H.E.L.P&#10;PEDIR AYUDA" android:textSize="18sp" android:textStyle="bold" android:textColor="#FFFFFF" android:gravity="center" android:backgroundTint="#B52D2D" />
-</FrameLayout>
+<?xml version="1.0" encoding="utf-8"?><FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="4dp"><Button android:id="@+id/widgetHelpButton" android:layout_width="match_parent" android:layout_height="match_parent" android:minWidth="120dp" android:minHeight="72dp" android:text="CERCA&#10;PEDIR AYUDA" android:textSize="18sp" android:textStyle="bold" android:textColor="#FFFFFF" android:gravity="center" android:backgroundTint="#0B5960" /></FrameLayout>

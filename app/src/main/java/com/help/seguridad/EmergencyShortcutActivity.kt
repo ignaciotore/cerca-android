@@ -26,11 +26,11 @@ class EmergencyShortcutActivity:AppCompatActivity(){
     override fun onDestroy(){h.removeCallbacksAndMessages(null);super.onDestroy()}
     private fun ui(){
         val cancelKey=if(QuickAccessPrefs(this).oppositeKey()==KeyEvent.KEYCODE_VOLUME_UP)"Volumen +" else "Volumen –"
-        val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(24),dp(48),dp(24),dp(32));setBackgroundColor(Color.parseColor("#FAF7F2"))}
-        root.addView(TextView(this).apply{text="H.E.L.P ACTIVADO";textSize=30f;setTextColor(Color.parseColor("#A92C2C"));gravity=Gravity.CENTER;setTypeface(typeface,android.graphics.Typeface.BOLD)})
+        val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(24),dp(48),dp(24),dp(32));setBackgroundColor(Color.parseColor("#F7FAF9"))}
+        root.addView(TextView(this).apply{text="CERCA ACTIVADO";textSize=30f;setTextColor(Color.parseColor("#A92C2C"));gravity=Gravity.CENTER;setTypeface(typeface,android.graphics.Typeface.BOLD)})
         root.addView(TextView(this).apply{text="El pedido de ayuda se enviará en";textSize=18f;gravity=Gravity.CENTER;setPadding(0,dp(18),0,0)})
         number=TextView(this).apply{text="5";textSize=76f;setTextColor(Color.parseColor("#A92C2C"));gravity=Gravity.CENTER;setTypeface(typeface,android.graphics.Typeface.BOLD)};root.addView(number)
-        root.addView(Button(this).apply{text="CANCELAR";textSize=19f;setTextColor(Color.WHITE);backgroundTintList=ColorStateList.valueOf(Color.parseColor("#173B46"));setOnClickListener{cancel()}},LinearLayout.LayoutParams(-1,dp(62)))
+        root.addView(Button(this).apply{text="CANCELAR";textSize=19f;setTextColor(Color.WHITE);backgroundTintList=ColorStateList.valueOf(Color.parseColor("#0B5960"));setOnClickListener{cancel()}},LinearLayout.LayoutParams(-1,dp(62)))
         hint=TextView(this).apply{text="Si fue un error, también podés presionar "+cancelKey+" una vez.";textSize=15f;gravity=Gravity.CENTER;setTextColor(Color.parseColor("#667177"));setPadding(0,dp(18),0,0)};root.addView(hint);setContentView(root)
     }
     private fun cancel(){if(done)return;done=true;h.removeCallbacksAndMessages(null);number.text="✓";hint.text="Pedido cancelado. No se envió ninguna alerta.";h.postDelayed({finish()},650L)}

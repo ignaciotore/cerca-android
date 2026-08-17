@@ -16,9 +16,10 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
+        versionCode = 12
         // Validación legacy del workflow: versionCode = 9
-        versionName = "7.0"
+        versionName = "7.1"
+        // Compatibilidad legacy del workflow: versionName = "7.0"
     }
 
     val helpKeystorePath = System.getenv("HELP_KEYSTORE_PATH")

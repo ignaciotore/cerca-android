@@ -52,8 +52,12 @@ class BillingManager(
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 billingReady = billingResult.responseCode == BillingClient.BillingResponseCode.OK
                 if (billingReady) {
-                    querySubscriptionProduct()
+                    querySubscriptionProduct(reportErrors = false)
                     refreshPurchases()
+                } else {
+                    activity.runOnUiThread {
+                        onMessage("No pude conectar con Google Play Billing: ${billingResult.responseCode} · ${billingResult.debugMessage}")
+                    }
                 }
             }
 
@@ -79,8 +83,15 @@ class BillingManager(
         }
     }
 
-    private fun querySubscriptionProduct(onReady: (() -> Unit)? = null) {
-        if (!billingReady) return
+    private fun querySubscriptionProduct(
+        reportErrors: Boolean,
+        onReady: ((ProductDetails) -> Unit)? = null
+    ) {
+        if (!billingReady) {
+            if (reportErrors) onMessage("Google Play todavía no está listo. Probá nuevamente en unos segundos.")
+            return
+        }
+
         val product = QueryProductDetailsParams.Product.newBuilder()
             .setProductId(SUBSCRIPTION_PRODUCT_ID)
             .setProductType(BillingClient.ProductType.SUBS)
@@ -90,10 +101,26 @@ class BillingManager(
             .build()
 
         billingClient.queryProductDetailsAsync(params) { billingResult, result ->
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                subscriptionProductDetails = result.productDetailsList.firstOrNull()
-                if (subscriptionProductDetails != null) onReady?.invoke()
+            val details = result.productDetailsList.firstOrNull { it.productId == SUBSCRIPTION_PRODUCT_ID }
+            subscriptionProductDetails = details
+
+            if (details != null) {
+                activity.runOnUiThread { onReady?.invoke(details) }
+                return@queryProductDetailsAsync
             }
+
+            if (!reportErrors) return@queryProductDetailsAsync
+
+            val unfetched = result.unfetchedProductList.firstOrNull { it.productId == SUBSCRIPTION_PRODUCT_ID }
+            val reason = when (unfetched?.statusCode) {
+                2 -> "El ID de la suscripción no tiene un formato válido."
+                3 -> "Google Play todavía no encuentra help_monthly para esta instalación."
+                4 -> "Google Play encuentra help_monthly, pero no hay un plan/oferta elegible para esta cuenta y región."
+                else -> "Google Play no devolvió la suscripción help_monthly."
+            }
+            val googleDetail = billingResult.debugMessage.trim()
+            val suffix = if (googleDetail.isNotBlank()) " · Google: $googleDetail" else " · código ${billingResult.responseCode}"
+            activity.runOnUiThread { onMessage(reason + suffix) }
         }
     }
 
@@ -103,31 +130,28 @@ class BillingManager(
             return
         }
 
-        val details = subscriptionProductDetails
-        if (details == null) {
-            querySubscriptionProduct { launchSubscription(obfuscatedAccountId) }
-            onMessage("Preparando la suscripción…")
-            return
-        }
+        onMessage("Consultando la suscripción en Google Play…")
+        querySubscriptionProduct(reportErrors = true) { details ->
+            val offers = details.subscriptionOfferDetails.orEmpty()
+            val offer = offers.firstOrNull { "trial30" in it.offerTags } ?: offers.firstOrNull()
+            if (offer == null) {
+                onMessage("Google Play devolvió help_monthly, pero no hay ningún plan disponible para comprar.")
+                return@querySubscriptionProduct
+            }
 
-        val offers = details.subscriptionOfferDetails.orEmpty()
-        val offer = offers.firstOrNull { "trial30" in it.offerTags } ?: offers.firstOrNull()
-        if (offer == null) {
-            onMessage("La suscripción todavía no está configurada en Google Play.")
-            return
-        }
+            val productParams = BillingFlowParams.ProductDetailsParams.newBuilder()
+                .setProductDetails(details)
+                .setOfferToken(offer.offerToken)
+                .build()
+            val flowParams = BillingFlowParams.newBuilder()
+                .setProductDetailsParamsList(listOf(productParams))
+                .setObfuscatedAccountId(obfuscatedAccountId)
+                .build()
 
-        val productParams = BillingFlowParams.ProductDetailsParams.newBuilder()
-            .setProductDetails(details)
-            .setOfferToken(offer.offerToken)
-            .build()
-        val flowParams = BillingFlowParams.newBuilder()
-            .setProductDetailsParamsList(listOf(productParams))
-            .setObfuscatedAccountId(obfuscatedAccountId)
-            .build()
-        val result = billingClient.launchBillingFlow(activity, flowParams)
-        if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-            onMessage("No pude abrir la compra en Google Play.")
+            val result = billingClient.launchBillingFlow(activity, flowParams)
+            if (result.responseCode != BillingClient.BillingResponseCode.OK) {
+                onMessage("Google Play no abrió la compra: ${result.responseCode} · ${result.debugMessage}")
+            }
         }
     }
 
@@ -136,7 +160,7 @@ class BillingManager(
             BillingClient.BillingResponseCode.OK -> processPurchases(purchases.orEmpty())
             BillingClient.BillingResponseCode.USER_CANCELED -> onMessage("Compra cancelada.")
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> refreshPurchases()
-            else -> onMessage("Google Play no pudo completar la operación.")
+            else -> onMessage("Google Play no pudo completar la operación: ${billingResult.responseCode} · ${billingResult.debugMessage}")
         }
     }
 

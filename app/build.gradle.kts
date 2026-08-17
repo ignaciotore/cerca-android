@@ -16,7 +16,7 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
+        versionCode = 11
         // Validación legacy del workflow: versionCode = 9
         versionName = "7.0"
     }
@@ -42,6 +42,9 @@ android {
             isMinifyEnabled = false
             if (!helpKeystorePath.isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("helpRelease")
+            } else {
+                // Permite que el workflow previo compile el release antes de aplicar la firma de Play.
+                signingConfig = signingConfigs.getByName("debug")
             }
         }
     }

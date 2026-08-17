@@ -290,6 +290,10 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.pickSms2Button).setOnClickListener { openPhoneContactPicker(REQ_SMS2_CONTACT) }
         findViewById<Button>(R.id.pickSms3Button).setOnClickListener { openPhoneContactPicker(REQ_SMS3_CONTACT) }
         findViewById<Button>(R.id.pickSms4Button).setOnClickListener { openPhoneContactPicker(REQ_SMS4_CONTACT) }
+        findViewById<Button>(R.id.clearSms1Button).setOnClickListener { clearSmsContact(1) }
+        findViewById<Button>(R.id.clearSms2Button).setOnClickListener { clearSmsContact(2) }
+        findViewById<Button>(R.id.clearSms3Button).setOnClickListener { clearSmsContact(3) }
+        findViewById<Button>(R.id.clearSms4Button).setOnClickListener { clearSmsContact(4) }
         findViewById<Button>(R.id.saveSetupButton).setOnClickListener { if (saveSetup()) finishSavingSetup() }
         findViewById<Button>(R.id.cancelEditButton).setOnClickListener {
             editingProfile = false
@@ -597,7 +601,31 @@ class MainActivity : AppCompatActivity() {
         sms2Display.text = contactLabel(sms2Name, sms2Phone, "Contacto 2 · Opcional")
         sms3Display.text = contactLabel(sms3Name, sms3Phone, "Contacto 3 · Opcional")
         sms4Display.text = contactLabel(sms4Name, sms4Phone, "Contacto 4 · Opcional")
+
+        val phones = listOf(sms1Phone, sms2Phone, sms3Phone, sms4Phone)
+        val controls = listOf(
+            Triple(R.id.pickSms1Button, R.id.clearSms1Button, 1),
+            Triple(R.id.pickSms2Button, R.id.clearSms2Button, 2),
+            Triple(R.id.pickSms3Button, R.id.clearSms3Button, 3),
+            Triple(R.id.pickSms4Button, R.id.clearSms4Button, 4)
+        )
+        controls.forEachIndexed { i, control ->
+            val hasContact = phones[i].isNotBlank()
+            findViewById<Button>(control.first).text = if (hasContact) "CAMBIAR CONTACTO ${control.third}" else "ELEGIR CONTACTO ${control.third}"
+            findViewById<Button>(control.second).visibility = if (hasContact) View.VISIBLE else View.GONE
+        }
+
         if (callPhone.isNotBlank()) callPhoneManual.setText(callPhone)
+    }
+
+    private fun clearSmsContact(index: Int) {
+        when (index) {
+            1 -> { sms1Name = ""; sms1Phone = "" }
+            2 -> { sms2Name = ""; sms2Phone = "" }
+            3 -> { sms3Name = ""; sms3Phone = "" }
+            4 -> { sms4Name = ""; sms4Phone = "" }
+        }
+        updateContactDisplays()
     }
 
     private fun contactLabel(contactName: String, phone: String, emptyText: String): String {

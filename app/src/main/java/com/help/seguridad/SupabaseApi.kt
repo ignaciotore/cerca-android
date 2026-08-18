@@ -262,12 +262,16 @@ class SupabaseApi {
         request("POST", "/functions/v1/cerca-family?action=create_group", JSONObject(), session.accessToken).body
     )
 
-    fun inviteFamilyMember(session: Session, email: String, relationship: String): JSONObject = JSONObject(
-        request("POST", "/functions/v1/cerca-family-invite", JSONObject().put("email", email.trim()).put("relationship", relationship.trim()), session.accessToken).body
+    fun inviteFamilyMember(session: Session, displayName: String, relationship: String): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family-invite", JSONObject().put("display_name", displayName.trim()).put("relationship", relationship.trim()), session.accessToken).body
     )
 
     fun acceptFamilyInvite(session: Session, inviteId: String): JSONObject = JSONObject(
         request("POST", "/functions/v1/cerca-family?action=accept", JSONObject().put("invite_id", inviteId), session.accessToken).body
+    )
+
+    fun acceptFamilyInviteCode(session: Session, code: String): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family?action=accept_code", JSONObject().put("code", code.trim().uppercase()), session.accessToken).body
     )
 
     fun removeFamilyMember(session: Session, memberId: String): JSONObject = JSONObject(

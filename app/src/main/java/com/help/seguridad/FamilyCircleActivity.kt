@@ -89,11 +89,25 @@ class FamilyCircleActivity : AppCompatActivity() {
 
         val group = state.optJSONObject("group")
         if (group == null) {
-            val c = card()
-            c.addView(title("Todavía no tenés un círculo", 20f))
-            c.addView(body(if (plan == "family") "Creá tu círculo e invitá hasta 4 familiares. Con vos, el plan admite hasta 5 personas." else "Activá CERCA Familiar desde Mi cuenta para crear tu círculo."))
-            if (plan == "family") c.addView(primary("CREAR MI CÍRCULO CERCA") { createGroup() })
-            root.addView(c, margin())
+            val join = card()
+            join.addView(title("¿Te invitaron por WhatsApp?", 20f))
+            join.addView(body("Ingresá el código de 8 caracteres que recibiste para sumarte al Círculo CERCA."))
+            val code = EditText(this).apply {
+                hint = "Código de invitación"
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+                setSingleLine(true)
+            }
+            join.addView(code)
+            join.addView(primary("UNIRME AL CÍRCULO") { acceptInviteCode(code.text.toString()) })
+            root.addView(join, margin())
+
+            if (plan == "family") {
+                val c = card()
+                c.addView(title("Crear mi propio círculo", 20f))
+                c.addView(body("También podés crear tu Círculo CERCA e invitar hasta 4 familiares."))
+                c.addView(primary("CREAR MI CÍRCULO CERCA") { createGroup() })
+                root.addView(c, margin())
+            }
             root.addView(secondary("VOLVER") { finish() }, margin())
             return
         }
@@ -119,16 +133,13 @@ class FamilyCircleActivity : AppCompatActivity() {
         if (isOwner && count < 5) {
             val inviteCard = card()
             inviteCard.addView(title("Invitar a un familiar", 20f))
-            inviteCard.addView(body("La invitación se envía por WhatsApp. Tu familiar instala CERCA, crea su cuenta con este email y acepta desde Mi Círculo."))
-            val email = EditText(this).apply {
-                hint = "Email del familiar"
-                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            }
+            inviteCard.addView(body("Ingresá su nombre y relación. CERCA genera un código único y abre WhatsApp para enviárselo."))
+            val personName = EditText(this).apply { hint = "Nombre del familiar" }
             val relationship = EditText(this).apply { hint = "Relación · ej. Pareja, Mamá, Hijo" }
-            inviteCard.addView(email)
+            inviteCard.addView(personName)
             inviteCard.addView(relationship)
             inviteCard.addView(primary("INVITAR POR WHATSAPP") {
-                invite(email.text.toString(), relationship.text.toString())
+                invite(personName.text.toString(), relationship.text.toString())
             })
             root.addView(inviteCard, margin())
         }
@@ -148,13 +159,17 @@ class FamilyCircleActivity : AppCompatActivity() {
         val me = m.optBoolean("is_me", false)
         c.addView(title(name + if (me) " · Vos" else "", 18f))
         c.addView(body((if (role == "owner") "Titular" else rel) + " · " + if (status == "active") "Activo" else "Invitación pendiente"))
+        val inviteCode = m.optString("invite_code", "").trim()
+        if (isOwner && status == "pending" && inviteCode.isNotBlank()) {
+            c.addView(body("Código: " + inviteCode))
+        }
         val uid = m.optString("user_id", "")
         if (status == "active" && uid.isNotBlank() && !me) {
             c.addView(secondary("VER FICHA MÉDICA") { showMedical(uid, name) })
         }
         if (isOwner && role != "owner") {
             if (status == "pending") {
-                c.addView(secondary("ENVIAR POR WHATSAPP") { shareInvite(m.optString("email", name)) })
+                c.addView(secondary("ENVIAR POR WHATSAPP") { shareInvite(name, inviteCode) })
             }
             c.addView(danger(if (status == "pending") "CANCELAR INVITACIÓN" else "QUITAR DEL CÍRCULO") {
                 confirmRemove(m.optString("id"), name)
@@ -165,16 +180,18 @@ class FamilyCircleActivity : AppCompatActivity() {
 
     private fun createGroup() = post({ s -> api.createFamilyGroup(s) }, "Círculo creado.")
 
-    private fun invite(email: String, relationship: String) {
-        val cleanEmail = email.trim().lowercase()
-        if (!cleanEmail.contains("@")) { toast("Ingresá un email válido."); return }
+    private fun invite(displayName: String, relationship: String) {
+        val cleanName = displayName.trim()
+        if (cleanName.length < 2) { toast("Ingresá el nombre del familiar."); return }
         val s = session ?: run { toast("Iniciá sesión nuevamente."); return }
         executor.execute {
             try {
-                api.inviteFamilyMember(s, cleanEmail, relationship)
+                val result = api.inviteFamilyMember(s, cleanName, relationship)
+                val code = result.optString("invite_code", "").trim()
+                if (code.isBlank()) throw IllegalStateException("No pudimos generar el código de invitación.")
                 runOnUiThread {
-                    toast("Invitación guardada. Elegí el contacto en WhatsApp.")
-                    shareInvite(cleanEmail)
+                    toast("Invitación creada. Elegí el contacto en WhatsApp.")
+                    shareInvite(cleanName, code)
                     loadState()
                 }
             } catch (e: Exception) {
@@ -183,14 +200,17 @@ class FamilyCircleActivity : AppCompatActivity() {
         }
     }
 
-    private fun shareInvite(email: String) {
+    private fun shareInvite(displayName: String, code: String) {
+        if (code.isBlank()) { toast("No encontramos el código de esta invitación."); return }
         val message = buildString {
-            appendLine("Te invité a mi Círculo CERCA.")
+            appendLine("Hola $displayName, te invité a mi Círculo CERCA.")
             appendLine()
             appendLine("1. Instalá CERCA:")
             appendLine("https://play.google.com/store/apps/details?id=com.help.seguridad")
-            appendLine("2. Creá tu cuenta con este email: $email")
-            appendLine("3. Entrá a Mi Círculo CERCA y aceptá la invitación.")
+            appendLine("2. Creá tu cuenta o iniciá sesión.")
+            appendLine("3. Entrá a Mi Círculo CERCA e ingresá este código:")
+            appendLine()
+            appendLine(code.uppercase())
         }.trim()
         val whatsapp = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -208,6 +228,12 @@ class FamilyCircleActivity : AppCompatActivity() {
     }
 
     private fun acceptInvite(id: String) = post({ s -> api.acceptFamilyInvite(s, id) }, "Ya sos parte del Círculo CERCA.")
+
+    private fun acceptInviteCode(rawCode: String) {
+        val code = rawCode.trim().uppercase().replace(Regex("[^A-Z0-9]"), "")
+        if (code.length < 6) { toast("Ingresá el código de invitación."); return }
+        post({ s -> api.acceptFamilyInviteCode(s, code) }, "Ya sos parte del Círculo CERCA.")
+    }
 
     private fun confirmRemove(id: String, name: String) {
         AlertDialog.Builder(this)

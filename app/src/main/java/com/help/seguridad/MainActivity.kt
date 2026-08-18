@@ -865,7 +865,7 @@ class MainActivity : AppCompatActivity() {
         val family = currentFamilyTestPlan() == "family"
         val invitations = cache.getInt("family_invite_count", 0)
         planTestCard.visibility = if (beta) View.VISIBLE else View.GONE
-        familyHomeButton.visibility = if (beta && (family || invitations > 0)) View.VISIBLE else View.GONE
+        familyHomeButton.visibility = if (beta) View.VISIBLE else View.GONE
         familyHomeButton.text = if (invitations > 0 && !family) "MI CÍRCULO CERCA · INVITACIÓN PENDIENTE" else "MI CÍRCULO CERCA"
         if (::planTestStatus.isInitialized) {
             planTestStatus.text = if (family) "Vista activa: CERCA Familiar" else "Vista activa: CERCA Individual"

@@ -64,6 +64,21 @@ class SupabaseApi {
     class ApiException(val status: Int, override val message: String) : Exception(message)
 
     fun signUp(fullName: String, email: String, password: String): SignUpResult {
+        val familyProbe = request(
+            "POST",
+            "/functions/v1/cerca-family-signup",
+            JSONObject().put("full_name", fullName.trim()).put("email", email.trim()).put("password", password),
+            null
+        )
+        val familyJson = JSONObject(familyProbe.body.ifBlank { "{}" })
+        if (familyJson.optBoolean("invited", false)) {
+            if (familyJson.optBoolean("existing_account", false)) {
+                throw ApiException(409, familyJson.optString("error", "Ya existe una cuenta CERCA con ese email."))
+            }
+            val invitedSession = familyJson.optJSONObject("session")
+            if (invitedSession != null) return SignUpResult(parseSession(invitedSession, email), false)
+        }
+
         val redirect = URLEncoder.encode("$WEB_BASE?page=welcome", "UTF-8")
         val body = JSONObject()
             .put("email", email.trim())
@@ -248,7 +263,7 @@ class SupabaseApi {
     )
 
     fun inviteFamilyMember(session: Session, email: String, relationship: String): JSONObject = JSONObject(
-        request("POST", "/functions/v1/cerca-family?action=invite", JSONObject().put("email", email.trim()).put("relationship", relationship.trim()), session.accessToken).body
+        request("POST", "/functions/v1/cerca-family-invite", JSONObject().put("email", email.trim()).put("relationship", relationship.trim()), session.accessToken).body
     )
 
     fun acceptFamilyInvite(session: Session, inviteId: String): JSONObject = JSONObject(

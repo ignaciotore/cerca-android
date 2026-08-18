@@ -1,5 +1,6 @@
 package com.help.seguridad
 
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
@@ -118,7 +119,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         if (isOwner && count < 5) {
             val inviteCard = card()
             inviteCard.addView(title("Invitar a un familiar", 20f))
-            inviteCard.addView(body("La otra persona instala CERCA, crea su cuenta con este email y acepta la invitación desde Mi Círculo."))
+            inviteCard.addView(body("Enviamos la invitación por email cuando el servidor lo permite. Si no, queda guardada y podés compartir CERCA desde la tarjeta pendiente."))
             val email = EditText(this).apply {
                 hint = "Email del familiar"
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
@@ -152,6 +153,9 @@ class FamilyCircleActivity : AppCompatActivity() {
             c.addView(secondary("VER FICHA MÉDICA") { showMedical(uid, name) })
         }
         if (isOwner && role != "owner") {
+            if (status == "pending") {
+                c.addView(secondary("COMPARTIR INVITACIÓN") { shareInvite(m.optString("email", name)) })
+            }
             c.addView(danger(if (status == "pending") "CANCELAR INVITACIÓN" else "QUITAR DEL CÍRCULO") {
                 confirmRemove(m.optString("id"), name)
             })
@@ -163,7 +167,28 @@ class FamilyCircleActivity : AppCompatActivity() {
 
     private fun invite(email: String, relationship: String) {
         if (!email.trim().contains("@")) { toast("Ingresá un email válido."); return }
-        post({ s -> api.inviteFamilyMember(s, email, relationship) }, "Invitación guardada.")
+        val s = session ?: run { toast("Iniciá sesión nuevamente."); return }
+        executor.execute {
+            try {
+                val result = api.inviteFamilyMember(s, email, relationship)
+                runOnUiThread {
+                    val sent = result.optBoolean("invite_email_sent", false)
+                    val warning = result.optString("invite_email_warning", "").trim()
+                    toast(if (sent) "Invitación enviada por email." else warning.ifBlank { "Invitación guardada." })
+                    loadState()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { toast(e.message ?: "No pudimos guardar la invitación.") }
+            }
+        }
+    }
+
+    private fun shareInvite(email: String) {
+        val text = "Te invitaron a mi Círculo CERCA. Instalá CERCA, creá tu cuenta con " + email + " y aceptá la invitación desde Mi Círculo. https://play.google.com/store/apps/details?id=com.help.seguridad"
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }, "Compartir invitación CERCA"))
     }
 
     private fun acceptInvite(id: String) = post({ s -> api.acceptFamilyInvite(s, id) }, "Ya sos parte del Círculo CERCA.")

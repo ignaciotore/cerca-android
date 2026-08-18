@@ -320,9 +320,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.profileBackButton).setOnClickListener { routeAfterAuthentication() }
         findViewById<Button>(R.id.logoutButton).setOnClickListener { confirmLogout() }
         findViewById<Button>(R.id.deleteAccountButton).setOnClickListener { confirmDeleteAccount() }
-        findViewById<Button>(R.id.privacyPolicyButton).setOnClickListener { openPrivacyPolicy() }
+        findViewById<Button>(R.id.privacyPolicyButton).visibility = View.GONE
         findViewById<Button>(R.id.subscribeButton).setOnClickListener { launchSubscriptionForCurrentAccount() }
-        findViewById<Button>(R.id.manageSubscriptionButton).setOnClickListener { openWebUrl(SUBSCRIPTION_MANAGEMENT_URL) }
+        findViewById<Button>(R.id.manageSubscriptionButton).visibility = View.GONE
 
         findViewById<Button>(R.id.expiredSubscribeButton).setOnClickListener { launchSubscriptionForCurrentAccount() }
         findViewById<Button>(R.id.expiredProfileButton).setOnClickListener { showProfile() }

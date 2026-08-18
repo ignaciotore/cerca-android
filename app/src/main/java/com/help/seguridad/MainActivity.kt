@@ -92,6 +92,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeSmsSummary: TextView
     private lateinit var profileData: TextView
     private lateinit var subscriptionStatus: TextView
+    private lateinit var familyHomeButton: Button
+    private lateinit var planTestCard: LinearLayout
+    private lateinit var planTestStatus: TextView
 
     private lateinit var billingManager: BillingManager
     private val api = SupabaseApi()
@@ -172,6 +175,7 @@ class MainActivity : AppCompatActivity() {
         sessionStore = SecureSessionStore(this)
         activationQueue = ActivationQueue(this)
         bindViews()
+        installFamilyTestUi()
         registerSmsReceivers()
         setupActions()
 
@@ -209,7 +213,10 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (::billingManager.isInitialized) billingManager.refreshPurchases()
         val session = currentSession
-        if (session != null) refreshAndSyncInBackground(session)
+        if (session != null) {
+            refreshAndSyncInBackground(session)
+            refreshFamilyTestStateAsync(session)
+        }
     }
 
     override fun onPause() {
@@ -309,6 +316,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.quickAccessButton).setOnClickListener { startActivity(Intent(this, QuickAccessSettingsActivity::class.java)) }
         findViewById<Button>(R.id.editProfileButton).setOnClickListener { showSetup(editing = true) }
         findViewById<Button>(R.id.medicalProfileButton).setOnClickListener { startActivity(Intent(this, MedicalProfileActivity::class.java)) }
+        familyHomeButton.setOnClickListener { startActivity(Intent(this, FamilyCircleActivity::class.java)) }
         findViewById<Button>(R.id.profileBackButton).setOnClickListener { routeAfterAuthentication() }
         findViewById<Button>(R.id.logoutButton).setOnClickListener { confirmLogout() }
         findViewById<Button>(R.id.deleteAccountButton).setOnClickListener { confirmDeleteAccount() }
@@ -716,6 +724,7 @@ class MainActivity : AppCompatActivity() {
             else -> "Prueba finalizada"
         }
         status.text = "Mantené apretado 3 segundos para pedir ayuda."
+        applyFamilyTestUi()
         showOnly(homePanel)
         maybeTriggerShortcutEmergency()
     }
@@ -728,6 +737,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showProfile() {
         val session = currentSession ?: run { showLogin(); return }
+        applyFamilyTestUi()
         val displayName = contactPrefs().getString("display_name", "").orEmpty()
             .ifBlank { accountCache().getString("full_name", "").orEmpty() }
         profileData.text = "Nombre: ${displayName.ifBlank { "—" }}\nEmail: ${session.email}\nVersión: ${BuildConfig.VERSION_NAME}"
@@ -738,6 +748,131 @@ class MainActivity : AppCompatActivity() {
         }
         showOnly(profilePanel)
     }
+
+    private fun installFamilyTestUi() {
+        familyHomeButton = Button(this).apply {
+            text = "MI CÍRCULO CERCA"
+            setTextColor(android.graphics.Color.parseColor("#0B5960"))
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#DDF2F0"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            visibility = View.GONE
+        }
+        val quick = findViewById<Button>(R.id.quickAccessButton)
+        val quickIndex = homePanel.indexOfChild(quick)
+        homePanel.addView(familyHomeButton, if (quickIndex >= 0) quickIndex + 1 else homePanel.childCount,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(58)).apply { setMargins(0, familyDp(10), 0, 0) })
+
+        planTestCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(familyDp(18), familyDp(18), familyDp(18), familyDp(18))
+            setBackgroundResource(R.drawable.card_bg)
+            visibility = View.GONE
+        }
+        planTestCard.addView(TextView(this).apply {
+            text = "Modo de prueba de planes"
+            textSize = 19f
+            setTextColor(android.graphics.Color.parseColor("#0B5960"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        planTestCard.addView(TextView(this).apply {
+            text = "Testing interno: podés alternar entre Individual y Familiar sin cambiar ni cobrar tu suscripción de Google Play."
+            textSize = 14f
+            setTextColor(android.graphics.Color.parseColor("#657579"))
+            setPadding(0, familyDp(6), 0, familyDp(8))
+        })
+        planTestStatus = TextView(this).apply {
+            textSize = 15f
+            setTextColor(android.graphics.Color.parseColor("#0B5960"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, familyDp(3), 0, familyDp(8))
+        }
+        planTestCard.addView(planTestStatus)
+        planTestCard.addView(Button(this).apply {
+            text = "PROBAR CERCA INDIVIDUAL"
+            setTextColor(android.graphics.Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#0B5960"))
+            setOnClickListener { setFamilyTestPlanRemote("individual") }
+        })
+        planTestCard.addView(Button(this).apply {
+            text = "PROBAR CERCA FAMILIAR"
+            setTextColor(android.graphics.Color.parseColor("#0B5960"))
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#DDF2F0"))
+            setOnClickListener { setFamilyTestPlanRemote("family") }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, familyDp(7), 0, 0) })
+        planTestCard.addView(TextView(this).apply {
+            text = "Individual: SOS, contactos, ficha médica y medicamentos.\n\nFamiliar: suma Mi Círculo CERCA, invitaciones y acceso autorizado a fichas médicas de la familia."
+            textSize = 13f
+            setTextColor(android.graphics.Color.parseColor("#657579"))
+            setPadding(0, familyDp(10), 0, 0)
+        })
+        val back = findViewById<Button>(R.id.profileBackButton)
+        val backIndex = profilePanel.indexOfChild(back)
+        profilePanel.addView(planTestCard, if (backIndex >= 0) backIndex else profilePanel.childCount,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, familyDp(14), 0, 0) })
+        applyFamilyTestUi()
+    }
+
+    private fun cacheFamilyTestState(state: org.json.JSONObject) {
+        accountCache().edit()
+            .putBoolean("family_beta_enabled", state.optBoolean("beta_enabled", false))
+            .putString("family_test_plan", state.optString("plan", "individual"))
+            .putInt("family_invite_count", state.optJSONArray("invitations")?.length() ?: 0)
+            .apply()
+    }
+
+    private fun refreshFamilyTestStateAsync(session: SupabaseApi.Session) {
+        runAsync(
+            work = {
+                val fresh = ensureFreshSessionBlocking(session)
+                Pair(fresh, api.fetchFamilyState(fresh))
+            },
+            success = { (fresh, state) ->
+                currentSession = fresh
+                sessionStore.save(fresh)
+                cacheFamilyTestState(state)
+                applyFamilyTestUi()
+            },
+            failure = { /* Conservamos el último plan de prueba conocido. */ }
+        )
+    }
+
+    private fun setFamilyTestPlanRemote(plan: String) {
+        val session = currentSession ?: return
+        toast("Actualizando vista de prueba…")
+        runAsync(
+            work = {
+                val fresh = ensureFreshSessionBlocking(session)
+                Pair(fresh, api.setFamilyTestPlan(fresh, plan))
+            },
+            success = { (fresh, state) ->
+                currentSession = fresh
+                sessionStore.save(fresh)
+                cacheFamilyTestState(state)
+                applyFamilyTestUi()
+                toast(if (plan == "family") "CERCA Familiar activado para pruebas." else "CERCA Individual activado para pruebas.")
+                if (profilePanel.visibility == View.VISIBLE) showProfile()
+            },
+            failure = { e -> toast(errorMessage(e)) }
+        )
+    }
+
+    private fun currentFamilyTestPlan(): String = accountCache().getString("family_test_plan", "individual") ?: "individual"
+
+    private fun applyFamilyTestUi() {
+        if (!::familyHomeButton.isInitialized || !::planTestCard.isInitialized) return
+        val cache = accountCache()
+        val beta = cache.getBoolean("family_beta_enabled", false)
+        val family = currentFamilyTestPlan() == "family"
+        val invitations = cache.getInt("family_invite_count", 0)
+        planTestCard.visibility = if (beta) View.VISIBLE else View.GONE
+        familyHomeButton.visibility = if (beta && (family || invitations > 0)) View.VISIBLE else View.GONE
+        familyHomeButton.text = if (invitations > 0 && !family) "MI CÍRCULO CERCA · INVITACIÓN PENDIENTE" else "MI CÍRCULO CERCA"
+        if (::planTestStatus.isInitialized) {
+            planTestStatus.text = if (family) "Vista activa: CERCA Familiar" else "Vista activa: CERCA Individual"
+        }
+    }
+
+    private fun familyDp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun showExpired() = showOnly(expiredPanel)
 

@@ -235,6 +235,39 @@ class SupabaseApi {
         publicToken = o.optString("public_token", "")
     )
 
+    fun fetchFamilyState(session: Session): JSONObject = JSONObject(
+        request("GET", "/functions/v1/cerca-family?action=state", null, session.accessToken).body
+    )
+
+    fun setFamilyTestPlan(session: Session, plan: String): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family?action=set_plan", JSONObject().put("plan", plan), session.accessToken).body
+    )
+
+    fun createFamilyGroup(session: Session): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family?action=create_group", JSONObject(), session.accessToken).body
+    )
+
+    fun inviteFamilyMember(session: Session, email: String, relationship: String): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family?action=invite", JSONObject().put("email", email.trim()).put("relationship", relationship.trim()), session.accessToken).body
+    )
+
+    fun acceptFamilyInvite(session: Session, inviteId: String): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family?action=accept", JSONObject().put("invite_id", inviteId), session.accessToken).body
+    )
+
+    fun removeFamilyMember(session: Session, memberId: String): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family?action=remove", JSONObject().put("member_id", memberId), session.accessToken).body
+    )
+
+    fun leaveFamilyGroup(session: Session): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-family?action=leave", JSONObject(), session.accessToken).body
+    )
+
+    fun fetchFamilyMedical(session: Session, userId: String): JSONObject {
+        val uid = URLEncoder.encode(userId, "UTF-8")
+        return JSONObject(request("GET", "/functions/v1/cerca-family?action=medical&user_id=" + uid, null, session.accessToken).body)
+    }
+
     fun isSessionNearExpiry(session: Session): Boolean {
         val now = Instant.now().epochSecond
         return session.expiresAtEpochSeconds <= now + 120L

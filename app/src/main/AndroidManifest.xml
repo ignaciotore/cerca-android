@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
@@ -13,9 +15,13 @@
         <activity android:name=".QuickAccessSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".EmergencyShortcutActivity" android:exported="false" android:excludeFromRecents="true" android:screenOrientation="portrait" />
         <activity android:name=".MedicalProfileActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".MedicationActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".CercaIdTapActivity" android:exported="false" android:screenOrientation="portrait" android:showWhenLocked="true" android:turnScreenOn="true" android:excludeFromRecents="true" />
         <service android:name=".HelpAccessibilityService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true" android:label="CERCA · Botón físico"><intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter><meta-data android:name="android.accessibilityservice" android:resource="@xml/help_accessibility_service" /></service>
         <receiver android:name=".HelpWidgetProvider" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/help_widget_info" /></receiver>
         <service android:name=".CercaNfcCardService" android:exported="true" android:permission="android.permission.BIND_NFC_SERVICE"><intent-filter><action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" /></intent-filter><meta-data android:name="android.nfc.cardemulation.host_apdu_service" android:resource="@xml/cerca_nfc_service" /></service>
+        <receiver android:name=".MedicationReminderReceiver" android:exported="false" />
+        <receiver android:name=".MedicationBootReceiver" android:exported="true"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity>
     </application>
 </manifest>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:background="#F7FAF9">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="CERCA" android:textColor="#0B5960" android:textSize="30sp" android:textStyle="bold" android:letterSpacing="0.08"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Medicación y recordatorios" android:textColor="#203337" android:textSize="25sp" android:textStyle="bold" android:layout_marginTop="6dp"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Cargá cada remedio por separado con su dosis, días y horarios. CERCA puede avisarte con una notificación." android:textColor="#657579" android:textSize="14sp" android:lineSpacingExtra="3dp" android:layout_marginTop="8dp"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/addMedicationButton" android:layout_width="match_parent" android:layout_height="54dp" android:text="+ AGREGAR MEDICACIÓN" android:textColor="#FFFFFF" android:textStyle="bold" android:layout_marginTop="16dp" app:backgroundTint="#0B5960" app:cornerRadius="17dp"/>
+    <TextView android:id="@+id/medicationStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="#657579" android:textSize="14sp" android:gravity="center" android:layout_marginTop="12dp"/>
+    <LinearLayout android:id="@+id/medicationList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="14dp"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Los recordatorios usan alarmas compatibles con el ahorro de batería. Android puede moverlos algunos minutos para cuidar el consumo." android:textColor="#7B858A" android:textSize="12sp" android:lineSpacingExtra="2dp" android:layout_marginTop="8dp"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/medicationBackButton" android:layout_width="match_parent" android:layout_height="50dp" android:text="VOLVER A FICHA MÉDICA" android:textColor="#0B5960" android:textStyle="bold" android:layout_marginTop="14dp" app:backgroundTint="#E8F2F0" app:cornerRadius="16dp"/>
+  </LinearLayout>
+</ScrollView>

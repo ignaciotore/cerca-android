@@ -2,7 +2,10 @@ package com.help.seguridad
 
 import android.app.Activity
 import android.app.DatePickerDialog
+import android.content.ComponentName
 import android.content.Intent
+import android.provider.Settings
+import android.nfc.cardemulation.CardEmulation
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.nfc.NfcAdapter
@@ -59,6 +62,7 @@ class MedicalProfileActivity : AppCompatActivity() {
         findViewById<Button>(R.id.medicalBackButton).setOnClickListener { finish() }
         saveButton.setOnClickListener { saveProfile() }
         viewPublicButton.setOnClickListener { openPublicProfile() }
+        findViewById<Button>(R.id.nfcDefaultButton).setOnClickListener { requestPersistentNfcDefault() }
         findViewById<Button>(R.id.nfcPriorityButton).setOnClickListener {
             if (publicToken.isBlank() || !shareEnabled.isChecked) {
                 toast("Guardá la ficha y activá el acceso de emergencia primero.")
@@ -269,6 +273,38 @@ class MedicalProfileActivity : AppCompatActivity() {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
+    @Suppress("DEPRECATION")
+    private fun requestPersistentNfcDefault() {
+        val adapter = NfcAdapter.getDefaultAdapter(this)
+        if (adapter == null) { toast("Este teléfono no tiene NFC."); return }
+        if (!adapter.isEnabled) { toast("Activá NFC y volvé a intentar."); return }
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)) {
+            toast("Este teléfono no admite emulación NFC HCE.")
+            return
+        }
+        val component = ComponentName(this, CercaNfcCardService::class.java)
+        val card = CardEmulation.getInstance(adapter)
+        if (runCatching { card.isDefaultServiceForAid(component, NDEF_AID) }.getOrDefault(false)) {
+            toast("CERCA ya está configurada como servicio NFC para la ficha médica.")
+            refreshNfcStatus()
+            return
+        }
+        val intent = Intent(CardEmulation.ACTION_CHANGE_DEFAULT)
+            .putExtra(CardEmulation.EXTRA_CATEGORY, CardEmulation.CATEGORY_OTHER)
+            .putExtra(CardEmulation.EXTRA_SERVICE_COMPONENT, component)
+        try {
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+            } else {
+                startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
+                toast("Android no permitió fijarlo automáticamente. Si aparece una opción de app NFC predeterminada, elegí CERCA.")
+            }
+        } catch (_: Exception) {
+            runCatching { startActivity(Intent(Settings.ACTION_NFC_SETTINGS)) }
+            toast("Este fabricante no permite fijar desde la app el servicio NFC predeterminado.")
+        }
+    }
+
     private fun refreshNfcStatus() {
         val adapter = NfcAdapter.getDefaultAdapter(this)
         if (adapter == null) { nfcStatus.text = "NFC: no disponible en este teléfono."; return }
@@ -278,7 +314,17 @@ class MedicalProfileActivity : AppCompatActivity() {
             return
         }
         val ready = getSharedPreferences("cerca_medical_nfc", MODE_PRIVATE).getBoolean("share_enabled", false)
-        nfcStatus.text = if (ready) "Ficha preparada. Usá el modo CERCA ID para probar con un iPhone." else "Guardá la ficha y activá el acceso de emergencia."
+        val component = ComponentName(this, CercaNfcCardService::class.java)
+        val card = CardEmulation.getInstance(adapter)
+        val isDefault = runCatching { card.isDefaultServiceForAid(component, NDEF_AID) }.getOrDefault(false)
+        val selectionMode = runCatching { card.getSelectionModeForCategory(CardEmulation.CATEGORY_OTHER) }.getOrDefault(-1)
+        nfcStatus.text = when {
+            !ready -> "Guardá la ficha y activá el acceso de emergencia."
+            isDefault -> "CERCA está configurada como servicio NFC predeterminado para esta ficha. Probá con el teléfono bloqueado."
+            selectionMode == CardEmulation.SELECTION_MODE_ASK_IF_CONFLICT -> "Android detecta otra app usando el mismo canal NFC. Tocá CONFIGURAR CERCA COMO PREDETERMINADA para intentar evitar el selector."
+            selectionMode == CardEmulation.SELECTION_MODE_ALWAYS_ASK -> "Este teléfono está configurado para preguntar qué app NFC usar en cada lectura."
+            else -> "La ficha NFC está preparada, pero CERCA todavía no figura como servicio predeterminado."
+        }
     }
 
     private fun setBusy(busy: Boolean, message: String) {
@@ -288,5 +334,5 @@ class MedicalProfileActivity : AppCompatActivity() {
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
-    companion object { private const val REQ_MEDICAL_CONTACT = 801 }
+    companion object { private const val REQ_MEDICAL_CONTACT = 801; private const val NDEF_AID = "D2760000850101" }
 }

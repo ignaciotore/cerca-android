@@ -119,7 +119,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         if (isOwner && count < 5) {
             val inviteCard = card()
             inviteCard.addView(title("Invitar a un familiar", 20f))
-            inviteCard.addView(body("Enviamos la invitación por email cuando el servidor lo permite. Si no, queda guardada y podés compartir CERCA desde la tarjeta pendiente."))
+            inviteCard.addView(body("La invitación se envía por WhatsApp. Tu familiar instala CERCA, crea su cuenta con este email y acepta desde Mi Círculo."))
             val email = EditText(this).apply {
                 hint = "Email del familiar"
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
@@ -127,7 +127,7 @@ class FamilyCircleActivity : AppCompatActivity() {
             val relationship = EditText(this).apply { hint = "Relación · ej. Pareja, Mamá, Hijo" }
             inviteCard.addView(email)
             inviteCard.addView(relationship)
-            inviteCard.addView(primary("ENVIAR INVITACIÓN") {
+            inviteCard.addView(primary("INVITAR POR WHATSAPP") {
                 invite(email.text.toString(), relationship.text.toString())
             })
             root.addView(inviteCard, margin())
@@ -154,7 +154,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         }
         if (isOwner && role != "owner") {
             if (status == "pending") {
-                c.addView(secondary("COMPARTIR INVITACIÓN") { shareInvite(m.optString("email", name)) })
+                c.addView(secondary("ENVIAR POR WHATSAPP") { shareInvite(m.optString("email", name)) })
             }
             c.addView(danger(if (status == "pending") "CANCELAR INVITACIÓN" else "QUITAR DEL CÍRCULO") {
                 confirmRemove(m.optString("id"), name)
@@ -166,15 +166,15 @@ class FamilyCircleActivity : AppCompatActivity() {
     private fun createGroup() = post({ s -> api.createFamilyGroup(s) }, "Círculo creado.")
 
     private fun invite(email: String, relationship: String) {
-        if (!email.trim().contains("@")) { toast("Ingresá un email válido."); return }
+        val cleanEmail = email.trim().lowercase()
+        if (!cleanEmail.contains("@")) { toast("Ingresá un email válido."); return }
         val s = session ?: run { toast("Iniciá sesión nuevamente."); return }
         executor.execute {
             try {
-                val result = api.inviteFamilyMember(s, email, relationship)
+                api.inviteFamilyMember(s, cleanEmail, relationship)
                 runOnUiThread {
-                    val sent = result.optBoolean("invite_email_sent", false)
-                    val warning = result.optString("invite_email_warning", "").trim()
-                    toast(if (sent) "Invitación enviada por email." else warning.ifBlank { "Invitación guardada." })
+                    toast("Invitación guardada. Elegí el contacto en WhatsApp.")
+                    shareInvite(cleanEmail)
                     loadState()
                 }
             } catch (e: Exception) {
@@ -184,11 +184,27 @@ class FamilyCircleActivity : AppCompatActivity() {
     }
 
     private fun shareInvite(email: String) {
-        val text = "Te invitaron a mi Círculo CERCA. Instalá CERCA, creá tu cuenta con " + email + " y aceptá la invitación desde Mi Círculo. https://play.google.com/store/apps/details?id=com.help.seguridad"
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        val message = buildString {
+            appendLine("Te invité a mi Círculo CERCA.")
+            appendLine()
+            appendLine("1. Instalá CERCA:")
+            appendLine("https://play.google.com/store/apps/details?id=com.help.seguridad")
+            appendLine("2. Creá tu cuenta con este email: $email")
+            appendLine("3. Entrá a Mi Círculo CERCA y aceptá la invitación.")
+        }.trim()
+        val whatsapp = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
-        }, "Compartir invitación CERCA"))
+            putExtra(Intent.EXTRA_TEXT, message)
+            setPackage("com.whatsapp")
+        }
+        try {
+            startActivity(whatsapp)
+        } catch (_: Exception) {
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, message)
+            }, "Compartir invitación CERCA"))
+        }
     }
 
     private fun acceptInvite(id: String) = post({ s -> api.acceptFamilyInvite(s, id) }, "Ya sos parte del Círculo CERCA.")

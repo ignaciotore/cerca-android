@@ -45,6 +45,22 @@ class SupabaseApi {
         val serverEpochMs: Long
     )
 
+    data class MedicalProfile(
+        val fullName: String,
+        val birthDate: String,
+        val bloodType: String,
+        val allergies: String,
+        val medications: String,
+        val conditions: String,
+        val healthProvider: String,
+        val memberNumber: String,
+        val emergencyContactName: String,
+        val emergencyContactPhone: String,
+        val notes: String,
+        val shareEnabled: Boolean,
+        val publicToken: String
+    )
+
     class ApiException(val status: Int, override val message: String) : Exception(message)
 
     fun signUp(fullName: String, email: String, password: String): SignUpResult {
@@ -161,6 +177,63 @@ class SupabaseApi {
     fun deleteAccount(session: Session) {
         request("POST", "/functions/v1/delete-account", JSONObject(), session.accessToken)
     }
+
+    fun fetchMedicalProfile(session: Session): MedicalProfile? {
+        val uid = URLEncoder.encode(session.userId, "UTF-8")
+        val response = request(
+            "GET",
+            "/rest/v1/medical_profiles?user_id=eq.$uid&select=full_name,birth_date,blood_type,allergies,medications,conditions,health_provider,member_number,emergency_contact_name,emergency_contact_phone,notes,share_enabled,public_token",
+            null,
+            session.accessToken
+        )
+        val arr = JSONArray(response.body)
+        if (arr.length() == 0) return null
+        return parseMedicalProfile(arr.getJSONObject(0))
+    }
+
+    fun saveMedicalProfile(session: Session, profile: MedicalProfile): MedicalProfile {
+        val body = JSONObject()
+            .put("user_id", session.userId)
+            .put("full_name", profile.fullName)
+            .put("birth_date", if (profile.birthDate.isBlank()) JSONObject.NULL else profile.birthDate)
+            .put("blood_type", profile.bloodType)
+            .put("allergies", profile.allergies)
+            .put("medications", profile.medications)
+            .put("conditions", profile.conditions)
+            .put("health_provider", profile.healthProvider)
+            .put("member_number", profile.memberNumber)
+            .put("emergency_contact_name", profile.emergencyContactName)
+            .put("emergency_contact_phone", profile.emergencyContactPhone)
+            .put("notes", profile.notes)
+            .put("share_enabled", profile.shareEnabled)
+            .put("updated_at", Instant.now().toString())
+        val response = request(
+            "POST",
+            "/rest/v1/medical_profiles?on_conflict=user_id",
+            body,
+            session.accessToken,
+            extraHeaders = mapOf("Prefer" to "resolution=merge-duplicates,return=representation")
+        )
+        val arr = JSONArray(response.body)
+        if (arr.length() == 0) throw ApiException(500, "No pudimos guardar la ficha médica.")
+        return parseMedicalProfile(arr.getJSONObject(0))
+    }
+
+    private fun parseMedicalProfile(o: JSONObject) = MedicalProfile(
+        fullName = o.optString("full_name", ""),
+        birthDate = o.optString("birth_date", "").takeUnless { it == "null" } ?: "",
+        bloodType = o.optString("blood_type", ""),
+        allergies = o.optString("allergies", ""),
+        medications = o.optString("medications", ""),
+        conditions = o.optString("conditions", ""),
+        healthProvider = o.optString("health_provider", ""),
+        memberNumber = o.optString("member_number", ""),
+        emergencyContactName = o.optString("emergency_contact_name", ""),
+        emergencyContactPhone = o.optString("emergency_contact_phone", ""),
+        notes = o.optString("notes", ""),
+        shareEnabled = o.optBoolean("share_enabled", true),
+        publicToken = o.optString("public_token", "")
+    )
 
     fun isSessionNearExpiry(session: Session): Boolean {
         val now = Instant.now().epochSecond

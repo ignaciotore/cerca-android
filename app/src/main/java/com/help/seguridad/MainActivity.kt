@@ -308,6 +308,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.profileButton).setOnClickListener { showProfile() }
         findViewById<Button>(R.id.quickAccessButton).setOnClickListener { startActivity(Intent(this, QuickAccessSettingsActivity::class.java)) }
         findViewById<Button>(R.id.editProfileButton).setOnClickListener { showSetup(editing = true) }
+        findViewById<Button>(R.id.medicalProfileButton).setOnClickListener { startActivity(Intent(this, MedicalProfileActivity::class.java)) }
         findViewById<Button>(R.id.profileBackButton).setOnClickListener { routeAfterAuthentication() }
         findViewById<Button>(R.id.logoutButton).setOnClickListener { confirmLogout() }
         findViewById<Button>(R.id.deleteAccountButton).setOnClickListener { confirmDeleteAccount() }

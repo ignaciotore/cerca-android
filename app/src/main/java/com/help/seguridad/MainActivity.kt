@@ -215,7 +215,6 @@ class MainActivity : AppCompatActivity() {
         val session = currentSession
         if (session != null) {
             refreshAndSyncInBackground(session)
-            refreshFamilyTestStateAsync(session)
         }
     }
 
@@ -859,17 +858,9 @@ class MainActivity : AppCompatActivity() {
     private fun currentFamilyTestPlan(): String = accountCache().getString("family_test_plan", "individual") ?: "individual"
 
     private fun applyFamilyTestUi() {
-        if (!::familyHomeButton.isInitialized || !::planTestCard.isInitialized) return
-        val cache = accountCache()
-        val beta = cache.getBoolean("family_beta_enabled", false)
-        val family = currentFamilyTestPlan() == "family"
-        val invitations = cache.getInt("family_invite_count", 0)
-        planTestCard.visibility = if (beta) View.VISIBLE else View.GONE
-        familyHomeButton.visibility = if (beta) View.VISIBLE else View.GONE
-        familyHomeButton.text = if (invitations > 0 && !family) "MI CÍRCULO CERCA · INVITACIÓN PENDIENTE" else "MI CÍRCULO CERCA"
-        if (::planTestStatus.isInitialized) {
-            planTestStatus.text = if (family) "Vista activa: CERCA Familiar" else "Vista activa: CERCA Individual"
-        }
+        // CERCA Familiar queda preservado en el código pero fuera de la versión visible.
+        if (::familyHomeButton.isInitialized) familyHomeButton.visibility = View.GONE
+        if (::planTestCard.isInitialized) planTestCard.visibility = View.GONE
     }
 
     private fun familyDp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -904,7 +895,7 @@ class MainActivity : AppCompatActivity() {
         return ceil(diff.toDouble() / DAY_MS.toDouble()).toInt()
     }
 
-    private fun isNetworkAccessCached(): Boolean = isSubscriptionActiveCached() || daysRemaining() > 0
+    private fun isNetworkAccessCached(): Boolean = isSubscriptionActiveCached() || daysRemaining() > 0 || accountCache().getBoolean("enterprise_access_active", false)
 
     private fun launchSubscriptionForCurrentAccount() {
         val session = currentSession ?: run { showLogin(); return }

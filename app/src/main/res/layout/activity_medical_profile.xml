@@ -6,13 +6,26 @@
     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Completá la información que te gustaría que alguien pueda ver para ayudarte en una emergencia." android:textColor="#657579" android:textSize="14sp" android:lineSpacingExtra="3dp" android:layout_marginTop="8dp"/>
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/card_bg" android:layout_marginTop="16dp">
-      <EditText android:id="@+id/medicalFullName" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Nombre y apellido" android:inputType="textPersonName" android:background="@drawable/input_bg"/>
-      <EditText android:id="@+id/medicalBirthDate" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Fecha de nacimiento · tocá para elegir" android:inputType="none" android:focusable="false" android:clickable="true" android:background="@drawable/input_bg" android:layout_marginTop="9dp"/>
-      <EditText android:id="@+id/medicalBloodType" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Grupo sanguíneo · ej. A+" android:inputType="textCapCharacters" android:background="@drawable/input_bg" android:layout_marginTop="9dp"/>
-      <EditText android:id="@+id/medicalAllergies" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Alergias" android:inputType="textMultiLine" android:minLines="2" android:gravity="top" android:background="@drawable/input_bg" android:layout_marginTop="9dp"/>
-      <EditText android:id="@+id/medicalConditions" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Condiciones médicas relevantes" android:inputType="textMultiLine" android:minLines="2" android:gravity="top" android:background="@drawable/input_bg" android:layout_marginTop="9dp"/>
-      <EditText android:id="@+id/medicalHealthProvider" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Obra social / prepaga" android:inputType="text" android:background="@drawable/input_bg" android:layout_marginTop="9dp"/>
-      <EditText android:id="@+id/medicalMemberNumber" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Número de afiliado" android:inputType="text" android:background="@drawable/input_bg" android:layout_marginTop="9dp"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Nombre y apellido" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginBottom="5dp"/>
+      <EditText android:id="@+id/medicalFullName" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Ej. Juan Pérez" android:inputType="textPersonName" android:background="@drawable/input_bg"/>
+
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Fecha de nacimiento" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginTop="12dp" android:layout_marginBottom="5dp"/>
+      <EditText android:id="@+id/medicalBirthDate" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Tocá para elegir" android:inputType="none" android:focusable="false" android:clickable="true" android:background="@drawable/input_bg"/>
+
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Grupo sanguíneo" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginTop="12dp" android:layout_marginBottom="5dp"/>
+      <EditText android:id="@+id/medicalBloodType" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Ej. A+" android:inputType="textCapCharacters" android:background="@drawable/input_bg"/>
+
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Alergias" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginTop="12dp" android:layout_marginBottom="5dp"/>
+      <EditText android:id="@+id/medicalAllergies" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Ej. Penicilina, maní" android:inputType="textMultiLine" android:minLines="2" android:gravity="top" android:background="@drawable/input_bg"/>
+
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Condiciones médicas relevantes" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginTop="12dp" android:layout_marginBottom="5dp"/>
+      <EditText android:id="@+id/medicalConditions" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Ej. Diabetes, hipertensión" android:inputType="textMultiLine" android:minLines="2" android:gravity="top" android:background="@drawable/input_bg"/>
+
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Obra social / prepaga" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginTop="12dp" android:layout_marginBottom="5dp"/>
+      <EditText android:id="@+id/medicalHealthProvider" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Ej. OSDE" android:inputType="text" android:background="@drawable/input_bg"/>
+
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Número de afiliado" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginTop="12dp" android:layout_marginBottom="5dp"/>
+      <EditText android:id="@+id/medicalMemberNumber" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Número de socio / afiliado" android:inputType="text" android:background="@drawable/input_bg"/>
     </LinearLayout>
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/card_bg" android:layout_marginTop="14dp">
@@ -23,11 +36,12 @@
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/card_bg" android:layout_marginTop="14dp">
       <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Medicación" android:textColor="#0B5960" android:textSize="19sp" android:textStyle="bold"/>
-      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Cargá cada remedio, dosis, días y horarios. Podés activar un recordatorio para cada uno." android:textColor="#657579" android:textSize="14sp" android:layout_marginTop="5dp"/>
+      <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Los medicamentos cargados también forman parte de la ficha de emergencia compartida por CERCA ID." android:textColor="#657579" android:textSize="14sp" android:layout_marginTop="5dp"/>
       <com.google.android.material.button.MaterialButton android:id="@+id/medicalMedicationsButton" android:layout_width="match_parent" android:layout_height="52dp" android:text="MIS MEDICAMENTOS Y RECORDATORIOS" android:textColor="#0B5960" android:textStyle="bold" android:layout_marginTop="10dp" app:backgroundTint="#DDF2F0" app:cornerRadius="15dp"/>
     </LinearLayout>
 
-    <EditText android:id="@+id/medicalNotes" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Otra información importante" android:inputType="textMultiLine" android:minLines="2" android:gravity="top" android:background="@drawable/input_bg" android:layout_marginTop="14dp"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Otra información importante" android:textColor="#0B5960" android:textSize="13sp" android:textStyle="bold" android:layout_marginTop="16dp" android:layout_marginBottom="5dp"/>
+    <EditText android:id="@+id/medicalNotes" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Cualquier dato útil en una emergencia" android:inputType="textMultiLine" android:minLines="2" android:gravity="top" android:background="@drawable/input_bg"/>
 
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/card_bg" android:layout_marginTop="14dp">
       <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Acceso de emergencia" android:textColor="#0B5960" android:textSize="19sp" android:textStyle="bold"/>

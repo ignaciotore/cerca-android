@@ -7,11 +7,9 @@ import android.content.Intent
 import android.provider.Settings
 import android.nfc.cardemulation.CardEmulation
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.provider.ContactsContract
-import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -33,6 +31,7 @@ class MedicalProfileActivity : AppCompatActivity() {
     private var emergencyContactName = ""
     private var emergencyContactPhone = ""
     private var legacyMedications = ""
+    private var autoNfcSetupAttempted = false
 
     private lateinit var fullName: EditText
     private lateinit var birthDate: EditText
@@ -47,7 +46,6 @@ class MedicalProfileActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var nfcStatus: TextView
     private lateinit var saveButton: Button
-    private lateinit var viewPublicButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,15 +59,6 @@ class MedicalProfileActivity : AppCompatActivity() {
         findViewById<Button>(R.id.medicalMedicationsButton).setOnClickListener { startActivity(Intent(this, MedicationActivity::class.java)) }
         findViewById<Button>(R.id.medicalBackButton).setOnClickListener { finish() }
         saveButton.setOnClickListener { saveProfile() }
-        viewPublicButton.setOnClickListener { openPublicProfile() }
-        findViewById<Button>(R.id.nfcDefaultButton).setOnClickListener { requestPersistentNfcDefault() }
-        findViewById<Button>(R.id.nfcPriorityButton).setOnClickListener {
-            if (publicToken.isBlank() || !shareEnabled.isChecked) {
-                toast("Guardá la ficha y activá el acceso de emergencia primero.")
-            } else {
-                startActivity(Intent(this, CercaIdTapActivity::class.java))
-            }
-        }
         loadProfile()
         refreshNfcStatus()
     }
@@ -98,7 +87,6 @@ class MedicalProfileActivity : AppCompatActivity() {
         status = findViewById(R.id.medicalStatus)
         nfcStatus = findViewById(R.id.medicalNfcStatus)
         saveButton = findViewById(R.id.medicalSaveButton)
-        viewPublicButton = findViewById(R.id.medicalViewPublicButton)
     }
 
     private fun loadProfile() {
@@ -141,7 +129,7 @@ class MedicalProfileActivity : AppCompatActivity() {
         shareEnabled.isChecked = p.shareEnabled
         publicToken = p.publicToken
         syncNfcPrefs(p)
-        viewPublicButton.visibility = if (p.publicToken.isBlank() || !p.shareEnabled) View.GONE else View.VISIBLE
+        maybeAutoConfigureNfc()
     }
 
     private fun showBirthDatePicker() {
@@ -264,13 +252,19 @@ class MedicalProfileActivity : AppCompatActivity() {
             .apply()
     }
 
-    private fun openPublicProfile() {
-        if (publicToken.isBlank() || !shareEnabled.isChecked) {
-            toast("Guardá y activá el acceso de emergencia primero.")
+    private fun maybeAutoConfigureNfc() {
+        if (autoNfcSetupAttempted || publicToken.isBlank() || !shareEnabled.isChecked) return
+        autoNfcSetupAttempted = true
+        val adapter = NfcAdapter.getDefaultAdapter(this) ?: return
+        if (!adapter.isEnabled || !packageManager.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)) return
+        val component = ComponentName(this, CercaNfcCardService::class.java)
+        val card = CardEmulation.getInstance(adapter)
+        val alreadyDefault = runCatching { card.isDefaultServiceForAid(component, NDEF_AID) }.getOrDefault(false)
+        if (alreadyDefault) {
+            refreshNfcStatus()
             return
         }
-        val url = SupabaseApi.BASE_URL + "/functions/v1/cerca-medical-card?id=" + Uri.encode(publicToken)
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        requestPersistentNfcDefault()
     }
 
     @Suppress("DEPRECATION")

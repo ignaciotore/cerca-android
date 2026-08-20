@@ -37,7 +37,6 @@ class MasterAdminActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var session: SupabaseApi.Session? = null
-    private var bootstrapped = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,12 +54,7 @@ class MasterAdminActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
 
-        web.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                super.onPageFinished(view, url)
-                if (!bootstrapped && url.startsWith(BOOTSTRAP_URL)) bootstrapSession(view)
-            }
-        }
+        web.webViewClient = WebViewClient()
 
         web.webChromeClient = object : WebChromeClient() {
             override fun onShowFileChooser(webView: WebView?, filePathCallback: ValueCallback<Array<Uri>>?, fileChooserParams: FileChooserParams?): Boolean {
@@ -77,19 +71,39 @@ class MasterAdminActivity : AppCompatActivity() {
             }
         }
 
-        web.loadUrl(BOOTSTRAP_URL + "?v=" + System.currentTimeMillis())
+        loadDashboardHtml()
     }
 
-    private fun bootstrapSession(view: WebView) {
-        val active = session ?: return
-        val obj = JSONObject()
-            .put("access_token", active.accessToken)
-            .put("refresh_token", active.refreshToken)
-            .put("expires_at", active.expiresAtEpochSeconds)
-            .put("user", JSONObject().put("id", active.userId).put("email", active.email))
-        val js = "localStorage.setItem('cerca_master_session'," + JSONObject.quote(obj.toString()) + "); true;"
-        bootstrapped = true
-        view.evaluateJavascript(js) { view.loadUrl(DASHBOARD_URL + "?v=" + System.currentTimeMillis()) }
+    private fun loadDashboardHtml() {
+        Thread {
+            try {
+                val active = session ?: throw IllegalStateException("Sesión administradora no disponible")
+                val html = URL(DASHBOARD_URL + "?v=" + System.currentTimeMillis()).readText()
+                if (!html.contains("<html", ignoreCase = true)) throw IllegalStateException("Respuesta inválida del panel")
+
+                val obj = JSONObject()
+                    .put("access_token", active.accessToken)
+                    .put("refresh_token", active.refreshToken)
+                    .put("expires_at", active.expiresAtEpochSeconds)
+                    .put("user", JSONObject().put("id", active.userId).put("email", active.email))
+                val bootstrap = "<script>localStorage.setItem('cerca_master_session'," + JSONObject.quote(obj.toString()) + ");</script>"
+                val headStart = html.indexOf("<head", ignoreCase = true)
+                val headEnd = if (headStart >= 0) html.indexOf('>', headStart) else -1
+                val prepared = if (headEnd >= 0) {
+                    html.substring(0, headEnd + 1) + bootstrap + html.substring(headEnd + 1)
+                } else {
+                    bootstrap + html
+                }
+
+                runOnUiThread {
+                    web.loadDataWithBaseURL(DASHBOARD_URL, prepared, "text/html", "UTF-8", null)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "No pudimos abrir el Panel Maestro. Volvé a intentar.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     @Deprecated("compat")

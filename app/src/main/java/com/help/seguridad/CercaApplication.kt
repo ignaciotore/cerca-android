@@ -20,15 +20,10 @@ class CercaApplication : Application(), Application.ActivityLifecycleCallbacks {
         }
     }
 
-    override fun onActivityCreated(activity: Activity, state: Bundle?) {
-        if (activity is MainActivity ||
-            activity is MedicalProfileActivity ||
-            activity is MedicationActivity ||
-            activity is QuickAccessSettingsActivity
-        ) {
-            EnterpriseUiController.attach(activity)
-        }
-    }
+    // MainActivity resuelve empresa/rol dentro de su propio arranque, después de inflar la UI.
+    // Evitamos consultar acá porque onActivityCreated ocurre antes de setContentView y generaba la carrera
+    // "Individual -> Empresarial" que se veía al abrir la app.
+    override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
     override fun onActivityStarted(activity: Activity) = Unit
     override fun onActivityPaused(activity: Activity) = Unit
     override fun onActivityStopped(activity: Activity) = Unit

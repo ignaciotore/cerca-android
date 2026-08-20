@@ -570,7 +570,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 loadContactState()
                 syncActivationsAsync(fresh)
-                routeAfterAuthentication()
+                // No mostramos la interfaz individual antes de resolver empresa/rol.
+                // El loading permanece visible hasta aplicar la marca empresarial y el rol maestro.
+                EnterpriseUiController.prepareStartup(this, fresh) {
+                    routeAfterAuthentication()
+                }
             },
             failure = {
                 loadContactState()

@@ -27,6 +27,36 @@ object EnterpriseUiController {
     private const val MASTER_BUTTON_TAG = "cerca_master_admin_button"
     private val executor = Executors.newCachedThreadPool()
 
+    fun prepareStartup(activity: MainActivity, session: SupabaseApi.Session, onReady: () -> Unit) {
+        hideFamilyUi(activity)
+        executor.execute {
+            var resolvedState: EnterpriseApi.State? = null
+            var master = false
+            try { resolvedState = EnterpriseApi.fetchState(session) } catch (_: Exception) {}
+            try { master = MasterAdminActivity.canAccess(session) } catch (_: Exception) {}
+
+            activity.runOnUiThread {
+                val state = resolvedState
+                if (state != null) {
+                    val prefs = activity.getSharedPreferences("help_account_${session.userId}", Activity.MODE_PRIVATE)
+                    prefs.edit()
+                        .putBoolean("enterprise_access_active", state.enterpriseAccessActive)
+                        .putBoolean("enterprise_member", state.enterprise)
+                        .putString("enterprise_role", state.role ?: "")
+                        .apply()
+                    hideFamilyUi(activity)
+                    if (state.enterprise && state.organization != null) {
+                        applyBrand(activity, state)
+                    } else {
+                        installJoinButton(activity, session)
+                    }
+                }
+                if (master) installMasterButton(activity) else removeMasterButton(activity)
+                onReady()
+            }
+        }
+    }
+
     fun attach(activity: Activity) {
         hideFamilyUi(activity)
         val session = SecureSessionStore(activity).load() ?: return
@@ -97,6 +127,11 @@ object EnterpriseUiController {
         profile.addView(button, index, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 56)).apply {
             setMargins(0, dp(activity, 12), 0, dp(activity, 4))
         })
+    }
+
+    private fun removeMasterButton(activity: MainActivity) {
+        val profile = activity.findViewById<LinearLayout>(R.id.profilePanel)
+        findByTag(profile, MASTER_BUTTON_TAG)?.let { profile.removeView(it) }
     }
 
     private fun installAdminButton(activity: MainActivity, state: EnterpriseApi.State, primary: Int) {

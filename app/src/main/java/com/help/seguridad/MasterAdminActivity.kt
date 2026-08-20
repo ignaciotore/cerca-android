@@ -62,12 +62,39 @@ class MasterAdminActivity : AppCompatActivity() {
         loadDashboardHtml()
     }
 
+    private fun nativeSessionJson(): String {
+        val s = session ?: return "null"
+        return JSONObject()
+            .put("access_token", s.accessToken)
+            .put("refresh_token", s.refreshToken)
+            .put("expires_at", s.expiresAtEpochSeconds)
+            .put("user", JSONObject().put("id", s.userId).put("email", s.email))
+            .toString()
+    }
+
+    private fun prepareDashboardHtml(html: String): String {
+        val sessionJson = nativeSessionJson()
+        var prepared = html.replace(
+            "let S=JSON.parse(localStorage.getItem('cerca_master_session')||'null'),D=null;",
+            "let S=$sessionJson,D=null;"
+        )
+        prepared = prepared.replace(
+            "window.cercaSessionReady=async()=>{S=JSON.parse(localStorage.getItem('cerca_master_session')||'null');if(S)await load()};",
+            "window.cercaSessionReady=async()=>{if(S)await load()};"
+        )
+        if (prepared.contains("localStorage.getItem('cerca_master_session')")) {
+            throw IllegalStateException("No se pudo insertar la sesión administradora")
+        }
+        return prepared
+    }
+
     private fun loadDashboardHtml(){
         Thread {
             try {
                 val html = URL(DASHBOARD_URL + "?v=" + System.currentTimeMillis()).readText()
                 if (!html.contains("<html", ignoreCase = true)) throw IllegalStateException("Respuesta inválida del panel")
-                runOnUiThread { web.loadDataWithBaseURL(DASHBOARD_URL, html, "text/html", "UTF-8", null) }
+                val prepared = prepareDashboardHtml(html)
+                runOnUiThread { web.loadDataWithBaseURL(DASHBOARD_URL, prepared, "text/html", "UTF-8", null) }
             } catch (e:Exception) {
                 runOnUiThread { Toast.makeText(this, "No pudimos abrir el Panel Maestro. Volvé a intentar.", Toast.LENGTH_LONG).show() }
             }
@@ -75,10 +102,9 @@ class MasterAdminActivity : AppCompatActivity() {
     }
 
     private fun injectSession(view:WebView){
-        val s=session?:return
-        val obj=JSONObject().put("access_token",s.accessToken).put("refresh_token",s.refreshToken).put("expires_at",s.expiresAtEpochSeconds).put("user",JSONObject().put("id",s.userId).put("email",s.email))
-        val js="localStorage.setItem('cerca_master_session',"+JSONObject.quote(obj.toString())+"); if(window.cercaSessionReady){window.cercaSessionReady();}"
-        view.evaluateJavascript(js,null)
+        // La sesión ya viaja embebida en el HTML antes de renderizarse.
+        // Esto evita depender de localStorage, que en algunos WebView dejaba el panel en la pantalla de acceso.
+        view.evaluateJavascript("if(window.cercaSessionReady){window.cercaSessionReady();}", null)
     }
 
     @Deprecated("compat")

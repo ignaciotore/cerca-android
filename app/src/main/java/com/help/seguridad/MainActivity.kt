@@ -285,7 +285,7 @@ class MainActivity : AppCompatActivity() {
         val anchor = findViewById<Button>(anchorId)
         val parent = anchor.parent as LinearLayout
         val box = CheckBox(this).apply {
-            text = "Incluir ficha médica en este SMS"
+            text = "Enviar también mi ficha médica CERCA ID a este contacto"
             textSize = 14f
             setTextColor(android.graphics.Color.parseColor("#34454A"))
             visibility = View.GONE

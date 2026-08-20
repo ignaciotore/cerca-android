@@ -212,6 +212,11 @@ object EnterpriseUiController {
     }
 
     private fun tintTree(view: View, primary: Int, secondary: Int) {
+        // Mantener visible la etiqueta de los CheckBox de ficha médica.
+        if (view is android.widget.CheckBox) {
+            view.setTextColor(Color.parseColor("#34454A"))
+            return
+        }
         when (view) {
             is Button -> {
                 val label = view.text?.toString()?.uppercase().orEmpty()

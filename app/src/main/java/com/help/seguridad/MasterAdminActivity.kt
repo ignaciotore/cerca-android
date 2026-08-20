@@ -59,7 +59,19 @@ class MasterAdminActivity : AppCompatActivity() {
                 }catch(e:Exception){chooser=null;Toast.makeText(this@MasterAdminActivity,"No pude abrir tus imágenes.",Toast.LENGTH_LONG).show();false}
             }
         }
-        web.loadUrl(DASHBOARD_URL)
+        loadDashboardHtml()
+    }
+
+    private fun loadDashboardHtml(){
+        Thread {
+            try {
+                val html = URL(DASHBOARD_URL + "?v=" + System.currentTimeMillis()).readText()
+                if (!html.contains("<html", ignoreCase = true)) throw IllegalStateException("Respuesta inválida del panel")
+                runOnUiThread { web.loadDataWithBaseURL(DASHBOARD_URL, html, "text/html", "UTF-8", null) }
+            } catch (e:Exception) {
+                runOnUiThread { Toast.makeText(this, "No pudimos abrir el Panel Maestro. Volvé a intentar.", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
     }
 
     private fun injectSession(view:WebView){

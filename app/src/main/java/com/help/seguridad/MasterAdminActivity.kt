@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -17,7 +18,6 @@ import java.net.URL
 
 class MasterAdminActivity : AppCompatActivity() {
     companion object {
-        private const val BOOTSTRAP_URL = "https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/cerca-admin-bootstrap-view"
         private const val DASHBOARD_URL = "https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/cerca-admin-page"
         private const val API_URL = "${SupabaseApi.BASE_URL}/functions/v1/cerca-admin-panel?action=dashboard"
         private const val REQ_FILE = 942
@@ -38,6 +38,19 @@ class MasterAdminActivity : AppCompatActivity() {
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var session: SupabaseApi.Session? = null
 
+    private inner class CercaNativeBridge {
+        @JavascriptInterface
+        fun getSession(): String {
+            val active = session ?: return "null"
+            return JSONObject()
+                .put("access_token", active.accessToken)
+                .put("refresh_token", active.refreshToken)
+                .put("expires_at", active.expiresAtEpochSeconds)
+                .put("user", JSONObject().put("id", active.userId).put("email", active.email))
+                .toString()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         session = SecureSessionStore(this).load()
@@ -53,15 +66,24 @@ class MasterAdminActivity : AppCompatActivity() {
             allowContentAccess = true
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
-
+        web.addJavascriptInterface(CercaNativeBridge(), "CercaNative")
         web.webViewClient = WebViewClient()
-
         web.webChromeClient = object : WebChromeClient() {
-            override fun onShowFileChooser(webView: WebView?, filePathCallback: ValueCallback<Array<Uri>>?, fileChooserParams: FileChooserParams?): Boolean {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
                 chooser?.onReceiveValue(null)
                 chooser = filePathCallback
                 return try {
-                    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }, REQ_FILE)
+                    startActivityForResult(
+                        Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "image/*"
+                        },
+                        REQ_FILE
+                    )
                     true
                 } catch (e: Exception) {
                     chooser = null
@@ -70,29 +92,25 @@ class MasterAdminActivity : AppCompatActivity() {
                 }
             }
         }
-
         loadDashboardHtml()
     }
 
     private fun loadDashboardHtml() {
         Thread {
             try {
-                val active = session ?: throw IllegalStateException("Sesión administradora no disponible")
                 val html = URL(DASHBOARD_URL + "?v=" + System.currentTimeMillis()).readText()
-                if (!html.contains("<html", ignoreCase = true)) throw IllegalStateException("Respuesta inválida del panel")
+                if (!html.contains("<html", ignoreCase = true)) {
+                    throw IllegalStateException("Respuesta inválida del panel")
+                }
 
-                val obj = JSONObject()
-                    .put("access_token", active.accessToken)
-                    .put("refresh_token", active.refreshToken)
-                    .put("expires_at", active.expiresAtEpochSeconds)
-                    .put("user", JSONObject().put("id", active.userId).put("email", active.email))
-                val bootstrap = "<script>localStorage.setItem('cerca_master_session'," + JSONObject.quote(obj.toString()) + ");</script>"
-                val headStart = html.indexOf("<head", ignoreCase = true)
-                val headEnd = if (headStart >= 0) html.indexOf('>', headStart) else -1
-                val prepared = if (headEnd >= 0) {
-                    html.substring(0, headEnd + 1) + bootstrap + html.substring(headEnd + 1)
-                } else {
-                    bootstrap + html
+                val oldInit = "let S=JSON.parse(localStorage.getItem('cerca_master_session')||'null'),D=null;"
+                val newInit = "let S=(()=>{try{return JSON.parse(window.CercaNative.getSession())}catch(e){return null}})(),D=null;"
+                val oldReady = "window.cercaSessionReady=async()=>{S=JSON.parse(localStorage.getItem('cerca_master_session')||'null');if(S)await load()};"
+                val newReady = "window.cercaSessionReady=async()=>{try{S=JSON.parse(window.CercaNative.getSession())}catch(e){S=null}if(S)await load()};"
+
+                val prepared = html.replace(oldInit, newInit).replace(oldReady, newReady)
+                if (!prepared.contains("window.CercaNative.getSession()")) {
+                    throw IllegalStateException("No se pudo conectar la sesión al Panel Maestro")
                 }
 
                 runOnUiThread {
@@ -117,11 +135,18 @@ class MasterAdminActivity : AppCompatActivity() {
     }
 
     @Deprecated("compat")
-    override fun onBackPressed() { if (::web.isInitialized && web.canGoBack()) web.goBack() else super.onBackPressed() }
+    override fun onBackPressed() {
+        if (::web.isInitialized && web.canGoBack()) web.goBack() else super.onBackPressed()
+    }
 
     override fun onDestroy() {
-        if (::web.isInitialized) { web.stopLoading(); web.destroy() }
-        chooser?.onReceiveValue(null); chooser = null
+        if (::web.isInitialized) {
+            web.removeJavascriptInterface("CercaNative")
+            web.stopLoading()
+            web.destroy()
+        }
+        chooser?.onReceiveValue(null)
+        chooser = null
         super.onDestroy()
     }
 }

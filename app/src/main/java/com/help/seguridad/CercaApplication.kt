@@ -20,7 +20,15 @@ class CercaApplication : Application(), Application.ActivityLifecycleCallbacks {
         }
     }
 
-    override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
+    override fun onActivityCreated(activity: Activity, state: Bundle?) {
+        if (activity is MainActivity ||
+            activity is MedicalProfileActivity ||
+            activity is MedicationActivity ||
+            activity is QuickAccessSettingsActivity
+        ) {
+            EnterpriseUiController.attach(activity)
+        }
+    }
     override fun onActivityStarted(activity: Activity) = Unit
     override fun onActivityPaused(activity: Activity) = Unit
     override fun onActivityStopped(activity: Activity) = Unit

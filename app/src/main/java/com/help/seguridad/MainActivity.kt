@@ -21,6 +21,7 @@ import android.telephony.SubscriptionManager
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -85,6 +86,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sms2Display: TextView
     private lateinit var sms3Display: TextView
     private lateinit var sms4Display: TextView
+    private lateinit var sms1Medical: CheckBox
+    private lateinit var sms2Medical: CheckBox
+    private lateinit var sms3Medical: CheckBox
+    private lateinit var sms4Medical: CheckBox
 
     private lateinit var trialBadge: TextView
     private lateinit var status: TextView
@@ -175,6 +180,7 @@ class MainActivity : AppCompatActivity() {
         sessionStore = SecureSessionStore(this)
         activationQueue = ActivationQueue(this)
         bindViews()
+        installSmsMedicalOptions()
         installFamilyTestUi()
         registerSmsReceivers()
         setupActions()
@@ -266,6 +272,60 @@ class MainActivity : AppCompatActivity() {
         homeSmsSummary = findViewById(R.id.homeSmsSummary)
         profileData = findViewById(R.id.profileData)
         subscriptionStatus = findViewById(R.id.subscriptionStatus)
+    }
+
+    private fun installSmsMedicalOptions() {
+        sms1Medical = addSmsMedicalOption(1, R.id.pickSms1Button)
+        sms2Medical = addSmsMedicalOption(2, R.id.pickSms2Button)
+        sms3Medical = addSmsMedicalOption(3, R.id.pickSms3Button)
+        sms4Medical = addSmsMedicalOption(4, R.id.pickSms4Button)
+    }
+
+    private fun addSmsMedicalOption(index: Int, anchorId: Int): CheckBox {
+        val anchor = findViewById<Button>(anchorId)
+        val parent = anchor.parent as LinearLayout
+        val box = CheckBox(this).apply {
+            text = "Incluir ficha médica en este SMS"
+            textSize = 14f
+            setTextColor(android.graphics.Color.parseColor("#34454A"))
+            visibility = View.GONE
+            setPadding(2, 2, 2, 2)
+        }
+        parent.addView(
+            box,
+            parent.indexOfChild(anchor) + 1,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = familyDp(2)
+            }
+        )
+        box.setOnCheckedChangeListener { _, checked ->
+            contactPrefs().edit().putBoolean("sms" + index + "ShareMedical", checked).apply()
+            if (checked && medicalShareUrl() == null) {
+                toast("Quedó marcado. Para enviar la ficha, guardala y activá el acceso de emergencia en Ficha médica · CERCA ID.")
+            }
+        }
+        return box
+    }
+
+    private fun refreshSmsMedicalOptions() {
+        if (!::sms1Medical.isInitialized) return
+        val boxes = listOf(sms1Medical, sms2Medical, sms3Medical, sms4Medical)
+        val phones = listOf(sms1Phone, sms2Phone, sms3Phone, sms4Phone)
+        boxes.forEachIndexed { i, box ->
+            val hasContact = phones[i].isNotBlank()
+            box.visibility = if (hasContact) View.VISIBLE else View.GONE
+            val wanted = hasContact && contactPrefs().getBoolean("sms" + (i + 1) + "ShareMedical", false)
+            if (box.isChecked != wanted) box.isChecked = wanted
+        }
+    }
+
+    private fun medicalShareUrl(): String? {
+        val prefs = getSharedPreferences("cerca_medical_nfc", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("share_enabled", false)
+        val token = prefs.getString("public_token", "")?.trim().orEmpty()
+        return if (enabled && token.isNotBlank()) {
+            SupabaseApi.BASE_URL + "/functions/v1/cerca-medical-card?id=" + token
+        } else null
     }
 
     private fun registerSmsReceivers() {
@@ -623,6 +683,7 @@ class MainActivity : AppCompatActivity() {
             findViewById<Button>(control.second).visibility = if (hasContact) View.VISIBLE else View.GONE
         }
 
+        refreshSmsMedicalOptions()
         if (callPhone.isNotBlank()) callPhoneManual.setText(callPhone)
     }
 
@@ -633,6 +694,7 @@ class MainActivity : AppCompatActivity() {
             3 -> { sms3Name = ""; sms3Phone = "" }
             4 -> { sms4Name = ""; sms4Phone = "" }
         }
+        contactPrefs().edit().putBoolean("sms" + index + "ShareMedical", false).apply()
         updateContactDisplays()
     }
 
@@ -691,6 +753,10 @@ class MainActivity : AppCompatActivity() {
             .putString("sms2Name", sms2Name).putString("sms2Phone", sms2Phone)
             .putString("sms3Name", sms3Name).putString("sms3Phone", sms3Phone)
             .putString("sms4Name", sms4Name).putString("sms4Phone", sms4Phone)
+            .putBoolean("sms1ShareMedical", sms1Medical.isChecked)
+            .putBoolean("sms2ShareMedical", sms2Medical.isChecked)
+            .putBoolean("sms3ShareMedical", sms3Medical.isChecked)
+            .putBoolean("sms4ShareMedical", sms4Medical.isChecked)
             .putBoolean("configured", true)
             .apply()
         accountCache().edit().putString("full_name", personName).apply()
@@ -716,7 +782,8 @@ class MainActivity : AppCompatActivity() {
         val callLabel = if (callPhone.isBlank()) "—" else "${callName.ifBlank { "Contacto" }} · $callPhone"
         val smsContacts = savedSmsContacts()
         homeCallSummary.text = "Llamada: $callLabel"
-        homeSmsSummary.text = "Avisos por SMS: ${smsContacts.size} contacto(s)"
+        val medicalSmsCount = smsContacts.count { it.shareMedical }
+        homeSmsSummary.text = "Avisos por SMS: ${smsContacts.size} contacto(s)" + if (medicalSmsCount > 0) " · ficha médica: $medicalSmsCount" else ""
         trialBadge.text = when {
             isSubscriptionActiveCached() -> "Suscripción activa"
             daysRemaining() > 0 -> "Prueba gratuita · ${daysRemaining()} día(s)"
@@ -982,10 +1049,10 @@ class MainActivity : AppCompatActivity() {
         if (pickedPhone.isBlank()) { toast("Ese contacto no tiene un teléfono disponible."); return }
         when (requestCode) {
             REQ_CALL_CONTACT -> { callName = pickedName; callPhone = pickedPhone; callPhoneManual.setText(pickedPhone) }
-            REQ_SMS1_CONTACT -> { sms1Name = pickedName; sms1Phone = pickedPhone }
-            REQ_SMS2_CONTACT -> { sms2Name = pickedName; sms2Phone = pickedPhone }
-            REQ_SMS3_CONTACT -> { sms3Name = pickedName; sms3Phone = pickedPhone }
-            REQ_SMS4_CONTACT -> { sms4Name = pickedName; sms4Phone = pickedPhone }
+            REQ_SMS1_CONTACT -> { sms1Name = pickedName; sms1Phone = pickedPhone; contactPrefs().edit().putBoolean("sms1ShareMedical", false).apply() }
+            REQ_SMS2_CONTACT -> { sms2Name = pickedName; sms2Phone = pickedPhone; contactPrefs().edit().putBoolean("sms2ShareMedical", false).apply() }
+            REQ_SMS3_CONTACT -> { sms3Name = pickedName; sms3Phone = pickedPhone; contactPrefs().edit().putBoolean("sms3ShareMedical", false).apply() }
+            REQ_SMS4_CONTACT -> { sms4Name = pickedName; sms4Phone = pickedPhone; contactPrefs().edit().putBoolean("sms4ShareMedical", false).apply() }
         }
         // Persistimos cada selección inmediatamente. Algunos selectores de contactos
         // recrean la Activity al volver y, si esperamos al botón Guardar, se puede perder.
@@ -1158,9 +1225,14 @@ class MainActivity : AppCompatActivity() {
             .addOnFailureListener { finish(cachedLatitude, cachedLongitude) }
     }
 
-    private fun savedSmsContacts(): List<Pair<String, String>> = listOf(
-        sms1Name to sms1Phone, sms2Name to sms2Phone, sms3Name to sms3Phone, sms4Name to sms4Phone
-    ).filter { it.second.isNotBlank() }.distinctBy { it.second }
+    private data class SmsRecipient(val name: String, val phone: String, val shareMedical: Boolean)
+
+    private fun savedSmsContacts(): List<SmsRecipient> = listOf(
+        SmsRecipient(sms1Name, sms1Phone, contactPrefs().getBoolean("sms1ShareMedical", false)),
+        SmsRecipient(sms2Name, sms2Phone, contactPrefs().getBoolean("sms2ShareMedical", false)),
+        SmsRecipient(sms3Name, sms3Phone, contactPrefs().getBoolean("sms3ShareMedical", false)),
+        SmsRecipient(sms4Name, sms4Phone, contactPrefs().getBoolean("sms4ShareMedical", false))
+    ).filter { it.phone.isNotBlank() }.distinctBy { it.phone }
 
     @Suppress("DEPRECATION")
     private fun smsManagerForDefaultSim(): SmsManager? {
@@ -1203,10 +1275,13 @@ class MainActivity : AppCompatActivity() {
             deliveredSmsParts = 0
             var requestCode = (currentSmsBatch xor (currentSmsBatch ushr 32)).toInt()
 
-            contacts.forEach { (_, rawDestination) ->
-                val destination = normalizePhone(rawDestination)
+            contacts.forEach { recipient ->
+                val destination = normalizePhone(recipient.phone)
                 if (destination.isBlank()) return@forEach
-                val parts = manager.divideMessage(message)
+                val recipientMessage = if (recipient.shareMedical) {
+                    medicalShareUrl()?.let { message + " Ficha medica CERCA ID: " + it } ?: message
+                } else message
+                val parts = manager.divideMessage(recipientMessage)
                 expectedSmsParts += parts.size
                 val sentIntents = ArrayList<PendingIntent>()
                 val deliveredIntents = ArrayList<PendingIntent>()

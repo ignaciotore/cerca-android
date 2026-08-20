@@ -33,7 +33,6 @@ object EnterpriseUiController {
         executor.execute {
             try {
                 val state = EnterpriseApi.fetchState(session)
-                val master = if (activity is MainActivity) MasterAdminActivity.canAccess(session) else false
                 val prefs = activity.getSharedPreferences("help_account_${session.userId}", Activity.MODE_PRIVATE)
                 val previousAccess = prefs.getBoolean("enterprise_access_active", false)
                 prefs.edit()
@@ -48,8 +47,11 @@ object EnterpriseUiController {
                     } else if (activity is MainActivity) {
                         installJoinButton(activity, session)
                     }
-                    if (activity is MainActivity && master) installMasterButton(activity)
                     if (activity is MainActivity && previousAccess != state.enterpriseAccessActive) activity.recreate()
+                }
+                if (activity is MainActivity) {
+                    val master = try { MasterAdminActivity.canAccess(session) } catch (_: Exception) { false }
+                    if (master) activity.runOnUiThread { installMasterButton(activity) }
                 }
             } catch (_: Exception) {
             }

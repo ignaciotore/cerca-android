@@ -16,9 +16,9 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 30
+        versionCode = 31
         // Validación legacy del workflow: versionCode = 9
-        versionName = "8.8"
+        versionName = "8.9"
         // Compatibilidad legacy del workflow: versionName = "7.0"
     }
 

@@ -1,27 +1,30 @@
-# Data Safety — borrador final para cargar en Play Console
+# CERCA — Data Safety para Play Console
 
-Revisar las preguntas exactas que presente Play Console contra el AAB final antes de enviar.
+Revisar las preguntas exactas contra el AAB final antes de enviar.
 
-## Datos recopilados por H.E.L.P / backend
+## Datos recopilados por CERCA / backend
+- Información personal: nombre y email para crear y administrar la cuenta.
+- Identificador de usuario de Supabase.
+- Actividad de la app: activaciones confirmadas de PEDIR AYUDA, fecha/hora y versión, para funcionamiento y métricas internas.
+- Información de suscripción: producto, estado y vencimiento.
+- Información de salud ingresada voluntariamente en CERCA ID: puede incluir nombre, fecha de nacimiento, grupo sanguíneo, alergias, condiciones médicas, obra social/prepaga, número de afiliado, contacto de emergencia, notas y datos de medicación asociados a la ficha.
 
-- Información personal: nombre y email. Se transmiten cifrados en tránsito a Supabase para creación y administración de cuenta.
-- Actividad de la app / interacciones: registro de cada activación confirmada de PEDIR AYUDA, con fecha/hora, usuario y versión de la app. Uso: funcionalidad, administración y métricas internas del servicio.
-- Identificador de usuario: identificador de Supabase asociado a la cuenta.
-- Información de suscripción: estado de titularidad, producto y fecha de vencimiento. El token de compra no se conserva en texto plano; el backend guarda un hash después de validarlo.
+No se venden datos y no se utilizan para publicidad.
 
-No se venden datos y no se usan para publicidad.
+## Datos locales
+- Contactos de emergencia seleccionados por el usuario.
+- La agenda completa no se recopila.
+- Los recordatorios actuales de medicación (nombre, dosis, días y horarios) se guardan localmente por usuario en el dispositivo.
+- La app no lee SMS ni historial de llamadas.
 
-## Datos que H.E.L.P no recopila en su backend
+## Ubicación
+La ubicación puntual se solicita al confirmar PEDIR AYUDA y se utiliza para formar el enlace de Google Maps enviado a los contactos. No se guarda historial de ubicación en el backend ni se realiza seguimiento continuo/en segundo plano.
 
-- Ubicación histórica: la ubicación puntual se usa en el dispositivo para formar el link de Google Maps del SMS. No se sube a Supabase.
-- Agenda/contactos: el usuario elige teléfonos mediante el selector del sistema; los contactos de emergencia quedan locales en el dispositivo.
-- Contenido de SMS o historial de llamadas: la app no los lee.
-- Datos de tarjeta: son procesados por Google Play y la app no accede a ellos.
+## CERCA ID / NFC
+Si el usuario activa compartir la ficha médica, el backend genera/usa un identificador aleatorio para permitir la visualización de la ficha de emergencia mediante CERCA ID. El usuario puede desactivar esta función.
+
+## AccessibilityService
+El servicio de accesibilidad solo detecta las teclas de volumen para la secuencia de emergencia. No recupera contenido de pantalla y no se usa para recopilar datos personales o sensibles.
 
 ## Eliminación
-
-La eliminación de cuenta está disponible dentro de la app y en una URL pública. El borrado elimina la cuenta y datos asociados del backend.
-
-## Ubicación enviada por el usuario
-
-El enlace de ubicación se envía a los contactos de emergencia elegidos por el propio usuario como parte de una acción explícita de PEDIR AYUDA. Revisar la redacción exacta del formulario de Data Safety vigente al momento de enviar, especialmente sus reglas sobre transferencias iniciadas por el usuario.
+La cuenta puede eliminarse desde la app y mediante la URL pública de eliminación. Los datos backend asociados a la cuenta deben eliminarse según la implementación vigente.

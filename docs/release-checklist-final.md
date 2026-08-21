@@ -1,30 +1,40 @@
-# H.E.L.P — Checklist final antes de Google Play
+# CERCA — Checklist final antes de Google Play
 
-## Terminado fuera de Google
+## Terminado en código
 - Package definitivo `com.help.seguridad`.
 - target/compile SDK 36.
-- Backend Supabase de producción en São Paulo.
-- Auth real: alta, login, sesión persistente, logout y recuperación.
-- Perfil con trial de 30 días ligado a la cuenta y definido por el backend, sin reinicio local del trial.
-- Contactos de emergencia locales por usuario.
-- Cola offline de activaciones y sincronización al volver Internet.
-- Panel administrador privado y métricas globales/por usuario.
-- Eliminación de cuenta dentro de app y página web externa.
-- Política de privacidad pública actualizada.
-- RLS y backend sin avisos de seguridad de Supabase.
-- Estructura de entitlements y verificador Google Play desplegado.
-- Billing Library 9.1.0 y producto esperado `help_monthly`.
-- Flujo de emergencia con timeout de ubicación y llamada aunque falle GPS/SMS.
-- Backup Android desactivado; tráfico HTTP claro bloqueado.
-- Upload key preparada; el workflow final genera un AAB release firmado cuando los cuatro GitHub Secrets están cargados.
-- El acceso usa hora verificada del servidor + reloj monotónico para evitar reinicios simples del trial cambiando la fecha del teléfono.
+- versionCode 31 / versionName 8.9.
+- Backend Supabase de producción.
+- Auth, perfil y suscripción.
+- Contactos de emergencia.
+- Flujo PEDIR AYUDA con ubicación puntual, SMS y llamada.
+- Acceso rápido físico con secuencia `Vol– / Vol+ / Vol– / Vol+`.
+- Cuenta regresiva de 5 segundos para cancelar.
+- Widget de acceso rápido.
+- Ficha médica CERCA ID y NFC opcional.
+- Recordatorios de medicación.
+- Eliminación de cuenta.
+- Política de privacidad pública.
+- AccessibilityService sin lectura de contenido de pantalla.
 
-## Depende de Google Play
-- Aprobación/verificación de cuenta de desarrollador.
-- Crear aplicación `com.help.seguridad` en Play Console.
-- Crear suscripción `help_monthly`, base plan, precio y oferta si corresponde.
-- Crear/vincular credencial de Android Publisher y cargarla como secreto `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` en Supabase.
-- Activar Play App Signing y cargar el AAB release ya firmado con la upload key.
-- Declaración SEND_SMS y revisión de permiso.
-- Data Safety, App Content, clasificación de contenido y ficha final.
-- Prueba interna y prueba cerrada exigida para la cuenta personal.
+## Play Console
+- Cuenta de desarrollador Organización para las funciones de salud.
+- D‑U‑N‑S y verificación de organización.
+- Declaración de Apps de salud.
+- Declaración AccessibilityService y video demostrativo.
+- Declaración SEND_SMS por alertas de emergencia/seguridad física.
+- Data Safety incluyendo información de salud.
+- Credenciales válidas para revisión.
+- Suscripción `help_monthly`.
+- AAB release firmado.
+- Capturas reales de la versión 8.9.
+- Prueba interna y prueba cerrada según lo exigido por Play Console.
+
+## Prueba funcional obligatoria
+- Uso normal de volumen no activa SOS.
+- Secuencia `– + – +` en menos de 3 segundos sí activa.
+- Secuencia lenta/incompleta no activa.
+- Mantener volumen apretado no activa.
+- Cancelar evita SMS y llamada.
+- Modo prueba no envía SMS ni llama.
+- Widget activa la misma cuenta regresiva.

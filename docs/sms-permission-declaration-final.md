@@ -1,19 +1,18 @@
-# Declaración SEND_SMS — H.E.L.P
+# CERCA — declaración SEND_SMS para Google Play
 
-Permiso: `android.permission.SEND_SMS`
+CERCA solicita `android.permission.SEND_SMS`.
 
-Caso de uso principal: **Physical safety / emergency alerts to send SMS**.
+## Caso de uso
+Seleccionar la excepción:
+**Alertas de emergencia o seguridad física para enviar SMS.**
 
-H.E.L.P es una aplicación de seguridad personal. El usuario configura de uno a cuatro contactos de emergencia. Cuando mantiene presionado el botón PEDIR AYUDA durante 3 segundos, la app solicita una ubicación puntual, arma un enlace de Google Maps y envía automáticamente un SMS de alerta a esos contactos. A continuación inicia la llamada al contacto configurado.
+## Justificación sugerida
+> La función principal de CERCA es permitir que una persona pida ayuda rápidamente en una situación de emergencia o seguridad física. Cuando el usuario confirma PEDIR AYUDA, la app envía un SMS a los contactos de confianza previamente configurados. El mensaje incluye un aviso de ayuda y, cuando está disponible, un enlace puntual de Google Maps con la ubicación obtenida en ese momento. La app no lee SMS, no recibe SMS y no utiliza el permiso con fines publicitarios, analíticos ni de mensajería general.
 
-El envío automático es esencial para la función de emergencia porque reduce interacciones adicionales cuando el usuario necesita ayuda.
-
-La app:
-- no solicita READ_SMS, RECEIVE_SMS ni permisos de Call Log;
-- no lee mensajes;
-- no envía publicidad ni comunicaciones comerciales;
-- envía SMS únicamente después de la activación explícita de PEDIR AYUDA;
-- usa solamente destinatarios seleccionados previamente por el usuario;
-- no realiza seguimiento de ubicación en segundo plano.
-
-Video de demostración a preparar con datos ficticios: configurar contactos, mostrar disclosure de permisos, mantener PEDIR AYUDA 3 segundos, mostrar SMS recibido con Maps y llamada iniciada.
+## Evidencia para revisión
+El video debe mostrar:
+1. configuración previa de contactos;
+2. activación de PEDIR AYUDA;
+3. cuenta regresiva/cancelación;
+4. envío del aviso;
+5. que la ficha de Play Store describe el SMS como función central de seguridad.

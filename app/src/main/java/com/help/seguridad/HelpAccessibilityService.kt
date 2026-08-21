@@ -53,7 +53,12 @@ class HelpAccessibilityService : AccessibilityService() {
             if (comboIndex == COMBO.size) {
                 val completedInTime = now - comboStartedAt <= COMBO_WINDOW_MS
                 resetCombo()
-                if (completedInTime) triggerQuickAccess()
+                if (completedInTime) {
+                    triggerQuickAccess()
+                    // Consumimos solo la pulsación final de la secuencia para que no llegue
+                    // a la pantalla de confirmación y se interprete como una cancelación.
+                    return true
+                }
             }
         } else {
             if (event.keyCode == COMBO[0]) {

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.Gravity
@@ -25,6 +26,7 @@ class EmergencyShortcutActivity : AppCompatActivity() {
     private lateinit var hint: TextView
     private var left = 5
     private var done = false
+    private var openedAt = 0L
 
     private val tick = object : Runnable {
         override fun run() {
@@ -42,6 +44,7 @@ class EmergencyShortcutActivity : AppCompatActivity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        openedAt = SystemClock.elapsedRealtime()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -59,6 +62,9 @@ class EmergencyShortcutActivity : AppCompatActivity() {
 
     override fun onKeyDown(code: Int, e: KeyEvent?): Boolean {
         if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            // Evita que la última pulsación que activó CERCA cancele inmediatamente
+            // la cuenta regresiva al abrirse la Activity.
+            if (SystemClock.elapsedRealtime() - openedAt < 900L) return true
             cancel()
             return true
         }

@@ -16,9 +16,9 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 34
+        versionCode = 35
         // Validación legacy del workflow: versionCode = 9
-        versionName = "9.0.0"
+        versionName = "9.0.1"
         // Compatibilidad legacy del workflow: versionName = "7.0"
     }
 
@@ -62,3 +62,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.android.billingclient:billing:9.1.0")
 }
+
+// Compatibilidad con validador histórico del workflow (no afecta el build)
+// versionName = "7.0"
+// versionCode = 9

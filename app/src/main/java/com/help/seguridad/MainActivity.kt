@@ -219,6 +219,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        checkForAppUpdate()
         if (::billingManager.isInitialized) billingManager.refreshPurchases()
         val session = currentSession
         if (session != null) {
@@ -241,6 +242,36 @@ class MainActivity : AppCompatActivity() {
         try { unregisterReceiver(smsSentReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(smsDeliveredReceiver) } catch (_: Exception) {}
         super.onDestroy()
+    }
+
+    private fun checkForAppUpdate() {
+        val prefs = appPrefs()
+        val now = System.currentTimeMillis()
+        if (now - prefs.getLong("last_update_check_ms", 0L) < 6L * 60L * 60L * 1000L) return
+        prefs.edit().putLong("last_update_check_ms", now).apply()
+        executor.execute {
+            try {
+                val url = java.net.URL(SupabaseApi.BASE_URL + "/functions/v1/cerca-app-version")
+                val c = (url.openConnection() as java.net.HttpURLConnection).apply {
+                    requestMethod = "GET"; connectTimeout = 5000; readTimeout = 5000
+                }
+                val body = c.inputStream.bufferedReader().use { it.readText() }; c.disconnect()
+                val j = org.json.JSONObject(body)
+                if (j.optInt("version_code", BuildConfig.VERSION_CODE) <= BuildConfig.VERSION_CODE) return@execute
+                val name = j.optString("version_name", "nueva")
+                val msg = j.optString("message", "Hay una nueva versión de CERCA disponible.")
+                val dl = j.optString("download_url", "https://cerca-cuidarte.vercel.app")
+                val mandatory = j.optBoolean("mandatory", false)
+                runOnUiThread {
+                    val b = AlertDialog.Builder(this).setTitle("Nueva versión de CERCA · $name").setMessage(msg)
+                        .setPositiveButton("ACTUALIZAR AHORA") { _, _ ->
+                            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(dl))) } catch (_: Exception) { toast("No pude abrir la actualización.") }
+                        }
+                    if (!mandatory) b.setNegativeButton("MÁS TARDE", null) else b.setCancelable(false)
+                    b.show()
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     private fun bindViews() {

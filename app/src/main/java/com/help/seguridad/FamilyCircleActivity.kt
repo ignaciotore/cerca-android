@@ -118,9 +118,22 @@ class FamilyCircleActivity : AppCompatActivity() {
         top.addView(TextView(this).apply { text=if(has) "✓ Tiene CERCA" else "Sin CERCA"; textSize=13f; setTypeface(typeface,android.graphics.Typeface.BOLD); setTextColor(Color.parseColor(if(has)"#0B5960" else "#657579")); setPadding(dp(10),dp(7),dp(10),dp(7)); setBackgroundColor(Color.parseColor(if(has)"#DDF2F0" else "#EEF1F1")) })
         box.addView(top)
         val call=prefs().getString("callPhone","").orEmpty()==c.phone
-        box.addView(body("SMS activo" + (if(call) "  ·  Llamada activa" else "") + (if(has) "\nAlerta prioritaria activa  ·  Ficha médica: "+accessLabel(c.access) else "")))
+        box.addView(body("SMS activo" + (if(call) "  ·  Llamada activa" else "") + (if(has) "  ·  Alerta CERCA activa" else "")))
+
+        val medical = card().apply {
+            setBackgroundColor(Color.parseColor("#F1F7F6"))
+            addView(TextView(this@FamilyCircleActivity).apply {
+                text = "Ficha médica: " + accessLabel(c.access)
+                textSize = 14f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(Color.parseColor("#0B5960"))
+            })
+            addView(body(if(has) "CERCA compartirá la ficha según este permiso." else "Este permiso quedará preparado y se activará automáticamente si este contacto instala CERCA. La ficha no se envía por SMS."))
+            addView(secondary("CAMBIAR FICHA MÉDICA") { chooseAccess(c) })
+        }
+        box.addView(medical, margin())
+
         if(!call) box.addView(secondary("USAR PARA LLAMADA") { setCall(c) })
-        if(has) box.addView(secondary("PERMISO DE FICHA MÉDICA") { chooseAccess(c) })
         box.addView(danger("QUITAR CONTACTO") { removeContact(c) })
         return box
     }

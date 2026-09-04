@@ -156,7 +156,7 @@ class MainActivity : AppCompatActivity() {
                 val ok = cursor.use {
                     it.moveToFirst() && it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL
                 }
-                if (!ok) { toast("No se pudo descargar la actualización. Intentá nuevamente."); return }
+                if (!ok) { toast("No se pudo preparar la actualización. Intentá nuevamente."); return }
                 val apkUri = dm.getUriForDownloadedFile(id)
                 if (apkUri == null) { toast("No pude abrir la actualización."); return }
                 startActivity(Intent(Intent.ACTION_VIEW).apply {
@@ -322,7 +322,6 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
             pendingUpdateUrl = downloadUrl
             pendingUpdateName = versionName
-            toast("Android te pedirá habilitar una sola vez las actualizaciones desde CERCA.")
             try {
                 startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             } catch (_: Exception) {
@@ -337,12 +336,11 @@ class MainActivity : AppCompatActivity() {
         try {
             val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             val req = DownloadManager.Request(Uri.parse(downloadUrl))
-                .setTitle("Actualizando CERCA")
-                .setDescription("Descargando CERCA $versionName")
+                .setTitle("CERCA")
+                .setDescription("Preparando actualización")
                 .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             pendingUpdateDownloadId = dm.enqueue(req)
-            toast("Descargando CERCA $versionName…")
         } catch (_: Exception) {
             toast("No se pudo iniciar la actualización.")
         }

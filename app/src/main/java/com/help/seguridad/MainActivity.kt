@@ -2,6 +2,7 @@ package com.help.seguridad
 
 import android.Manifest
 import android.app.Activity
+import android.app.DownloadManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -16,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.ContactsContract
+import android.provider.Settings
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.view.MotionEvent
@@ -138,6 +140,33 @@ class MainActivity : AppCompatActivity() {
     private var failedSmsParts = 0
     private var deliveredSmsParts = 0
 
+    private var pendingUpdateDownloadId = -1L
+    private var pendingUpdateUrl: String? = null
+    private var pendingUpdateName: String? = null
+
+    private val updateDownloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (id <= 0L || id != pendingUpdateDownloadId) return
+            pendingUpdateDownloadId = -1L
+            try {
+                val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+                val cursor = dm.query(DownloadManager.Query().setFilterById(id))
+                val ok = cursor.use {
+                    it.moveToFirst() && it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL
+                }
+                if (!ok) { toast("No se pudo descargar la actualización. Intentá nuevamente."); return }
+                val apkUri = dm.getUriForDownloadedFile(id)
+                if (apkUri == null) { toast("No pude abrir la actualización."); return }
+                startActivity(Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } catch (_: Exception) { toast("No pude abrir la actualización.") }
+        }
+    }
+
     private val smsSentReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.getLongExtra(EXTRA_BATCH, -1L) != currentSmsBatch) return
@@ -189,6 +218,10 @@ class MainActivity : AppCompatActivity() {
         installSmsMedicalOptions()
         installFamilyTestUi()
         registerSmsReceivers()
+        ContextCompat.registerReceiver(
+            this, updateDownloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_EXPORTED
+        )
         setupActions()
 
         billingManager = BillingManager(
@@ -223,6 +256,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val waitingUrl = pendingUpdateUrl
+        if (waitingUrl != null && (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())) {
+            val waitingName = pendingUpdateName ?: "nueva"
+            pendingUpdateUrl = null
+            pendingUpdateName = null
+            Handler(Looper.getMainLooper()).postDelayed({ startUpdateDownload(waitingUrl, waitingName) }, 250L)
+        }
         checkForAppUpdate()
         if (::billingManager.isInitialized) billingManager.refreshPurchases()
         val session = currentSession
@@ -245,21 +285,19 @@ class MainActivity : AppCompatActivity() {
         if (::billingManager.isInitialized) billingManager.close()
         try { unregisterReceiver(smsSentReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(smsDeliveredReceiver) } catch (_: Exception) {}
+        try { unregisterReceiver(updateDownloadReceiver) } catch (_: Exception) {}
         super.onDestroy()
     }
 
     private fun checkForAppUpdate() {
         val prefs = appPrefs()
         val now = System.currentTimeMillis()
-        // Se consulta automáticamente al abrir o volver a CERCA. El minuto evita duplicados por permisos/pantallas del sistema.
         if (now - prefs.getLong("last_update_check_ms", 0L) < 60_000L) return
         prefs.edit().putLong("last_update_check_ms", now).apply()
         executor.execute {
             try {
                 val url = java.net.URL(SupabaseApi.BASE_URL + "/functions/v1/cerca-app-version")
-                val c = (url.openConnection() as java.net.HttpURLConnection).apply {
-                    requestMethod = "GET"; connectTimeout = 5000; readTimeout = 5000
-                }
+                val c = (url.openConnection() as java.net.HttpURLConnection).apply { requestMethod = "GET"; connectTimeout = 5000; readTimeout = 5000 }
                 val body = c.inputStream.bufferedReader().use { it.readText() }; c.disconnect()
                 val j = org.json.JSONObject(body)
                 if (j.optInt("version_code", BuildConfig.VERSION_CODE) <= BuildConfig.VERSION_CODE) return@execute
@@ -272,14 +310,41 @@ class MainActivity : AppCompatActivity() {
                     val b = AlertDialog.Builder(this)
                         .setTitle("Nueva versión de CERCA · $name")
                         .setMessage(msg)
-                        .setPositiveButton("ACTUALIZAR AHORA") { _, _ ->
-                            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(dl))) }
-                            catch (_: Exception) { toast("No pude abrir la actualización.") }
-                        }
+                        .setPositiveButton("ACTUALIZAR AHORA") { _, _ -> beginInAppUpdate(dl, name) }
                     if (!mandatory) b.setNegativeButton("MÁS TARDE", null) else b.setCancelable(false)
                     b.show()
                 }
             } catch (_: Exception) { }
+        }
+    }
+
+    private fun beginInAppUpdate(downloadUrl: String, versionName: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            pendingUpdateUrl = downloadUrl
+            pendingUpdateName = versionName
+            toast("Android te pedirá habilitar una sola vez las actualizaciones desde CERCA.")
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {
+                toast("No pude abrir el permiso de actualización.")
+            }
+            return
+        }
+        startUpdateDownload(downloadUrl, versionName)
+    }
+
+    private fun startUpdateDownload(downloadUrl: String, versionName: String) {
+        try {
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val req = DownloadManager.Request(Uri.parse(downloadUrl))
+                .setTitle("Actualizando CERCA")
+                .setDescription("Descargando CERCA $versionName")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+            pendingUpdateDownloadId = dm.enqueue(req)
+            toast("Descargando CERCA $versionName…")
+        } catch (_: Exception) {
+            toast("No se pudo iniciar la actualización.")
         }
     }
 
@@ -319,7 +384,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun installAccountPhoneUi() {
-        // El teléfono se pide al crear la cuenta. A usuarios existentes se les solicita automáticamente si falta.
         signupPhone = EditText(this).apply {
             hint = "Teléfono celular · ej. +54 9 11 1234 5678"
             inputType = android.text.InputType.TYPE_CLASS_PHONE
@@ -327,14 +391,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.input_bg)
         }
         val signupParent = signupEmail.parent as LinearLayout
-        signupParent.addView(
-            signupPhone,
-            signupParent.indexOfChild(signupEmail) + 1,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = familyDp(10) }
-        )
+        signupParent.addView(signupPhone, signupParent.indexOfChild(signupEmail) + 1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = familyDp(10) })
     }
 
     private fun showPhoneDialog() {
@@ -454,7 +511,7 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.profileButton).setOnClickListener { showProfile() }
         findViewById<Button>(R.id.quickAccessButton).setOnClickListener { startActivity(Intent(this, QuickAccessSettingsActivity::class.java)) }
-        findViewById<Button>(R.id.editProfileButton).setOnClickListener { showSetup(editing = true) }
+        findViewById<Button>(R.id.editProfileButton).visibility = View.GONE
         findViewById<Button>(R.id.medicalProfileButton).setOnClickListener { startActivity(Intent(this, MedicalProfileActivity::class.java)) }
         familyHomeButton.setOnClickListener { startActivity(Intent(this, FamilyCircleActivity::class.java)) }
         findViewById<Button>(R.id.profileBackButton).setOnClickListener { routeAfterAuthentication() }
@@ -793,10 +850,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun routeAfterAuthentication() {
         if (currentSession == null) { showLogin(); return }
-        if (!contactPrefs().getBoolean("configured", false)) {
-            showSetup(editing = false)
-        } else if (isNetworkAccessCached()) {
+        if (isNetworkAccessCached()) {
             showHome()
+            if (savedSmsContacts().isEmpty() && !contactPrefs().getBoolean("network_onboarding_shown", false)) {
+                contactPrefs().edit().putBoolean("network_onboarding_shown", true).apply()
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (!isFinishing && !isDestroyed) startActivity(Intent(this, FamilyCircleActivity::class.java))
+                }, 700L)
+            }
         } else {
             showExpired()
         }

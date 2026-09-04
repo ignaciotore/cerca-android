@@ -248,10 +248,11 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun checkForAppUpdate(force: Boolean = false) {
+    private fun checkForAppUpdate() {
         val prefs = appPrefs()
         val now = System.currentTimeMillis()
-        if (!force && now - prefs.getLong("last_update_check_ms", 0L) < 6L * 60L * 60L * 1000L) return
+        // Se consulta automáticamente al abrir o volver a CERCA. El minuto evita duplicados por permisos/pantallas del sistema.
+        if (now - prefs.getLong("last_update_check_ms", 0L) < 60_000L) return
         prefs.edit().putLong("last_update_check_ms", now).apply()
         executor.execute {
             try {
@@ -261,15 +262,19 @@ class MainActivity : AppCompatActivity() {
                 }
                 val body = c.inputStream.bufferedReader().use { it.readText() }; c.disconnect()
                 val j = org.json.JSONObject(body)
-                if (j.optInt("version_code", BuildConfig.VERSION_CODE) <= BuildConfig.VERSION_CODE) { if (force) runOnUiThread { toast("Ya tenés la última versión de CERCA.") }; return@execute }
+                if (j.optInt("version_code", BuildConfig.VERSION_CODE) <= BuildConfig.VERSION_CODE) return@execute
                 val name = j.optString("version_name", "nueva")
                 val msg = j.optString("message", "Hay una nueva versión de CERCA disponible.")
                 val dl = j.optString("download_url", "https://cerca-cuidarte.vercel.app")
                 val mandatory = j.optBoolean("mandatory", false)
                 runOnUiThread {
-                    val b = AlertDialog.Builder(this).setTitle("Nueva versión de CERCA · $name").setMessage(msg)
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    val b = AlertDialog.Builder(this)
+                        .setTitle("Nueva versión de CERCA · $name")
+                        .setMessage(msg)
                         .setPositiveButton("ACTUALIZAR AHORA") { _, _ ->
-                            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(dl))) } catch (_: Exception) { toast("No pude abrir la actualización.") }
+                            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(dl))) }
+                            catch (_: Exception) { toast("No pude abrir la actualización.") }
                         }
                     if (!mandatory) b.setNegativeButton("MÁS TARDE", null) else b.setCancelable(false)
                     b.show()
@@ -314,6 +319,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun installAccountPhoneUi() {
+        // El teléfono se pide al crear la cuenta. A usuarios existentes se les solicita automáticamente si falta.
         signupPhone = EditText(this).apply {
             hint = "Teléfono celular · ej. +54 9 11 1234 5678"
             inputType = android.text.InputType.TYPE_CLASS_PHONE
@@ -321,25 +327,14 @@ class MainActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.input_bg)
         }
         val signupParent = signupEmail.parent as LinearLayout
-        signupParent.addView(signupPhone, signupParent.indexOfChild(signupEmail) + 1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = familyDp(10) })
-
-        val back = findViewById<Button>(R.id.profileBackButton)
-        val parent = back.parent as LinearLayout
-        val idx = parent.indexOfChild(back)
-        parent.addView(Button(this).apply {
-            text = "MI TELÉFONO CERCA"
-            setTextColor(android.graphics.Color.parseColor("#0B5960"))
-            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#DDF2F0"))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setOnClickListener { showPhoneDialog() }
-        }, idx, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(52)).apply { setMargins(0, familyDp(10), 0, 0) })
-        parent.addView(Button(this).apply {
-            text = "BUSCAR ACTUALIZACIONES"
-            setTextColor(android.graphics.Color.parseColor("#0B5960"))
-            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#E8F2F0"))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setOnClickListener { checkForAppUpdate(true) }
-        }, idx + 1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(52)).apply { setMargins(0, familyDp(8), 0, 0) })
+        signupParent.addView(
+            signupPhone,
+            signupParent.indexOfChild(signupEmail) + 1,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = familyDp(10) }
+        )
     }
 
     private fun showPhoneDialog() {

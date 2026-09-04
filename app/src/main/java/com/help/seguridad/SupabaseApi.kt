@@ -246,7 +246,7 @@ class SupabaseApi {
         emergencyContactName = o.optString("emergency_contact_name", ""),
         emergencyContactPhone = o.optString("emergency_contact_phone", ""),
         notes = o.optString("notes", ""),
-        shareEnabled = o.optBoolean("share_enabled", true),
+        shareEnabled = o.optBoolean("share_enabled", false),
         publicToken = o.optString("public_token", "")
     )
 
@@ -286,6 +286,130 @@ class SupabaseApi {
         val uid = URLEncoder.encode(userId, "UTF-8")
         return JSONObject(request("GET", "/functions/v1/cerca-family?action=medical&user_id=" + uid, null, session.accessToken).body)
     }
+
+
+    fun fetchNetworkState(session: Session): JSONObject = JSONObject(
+        request("GET", "/functions/v1/cerca-network?action=state", null, session.accessToken).body
+    )
+
+    fun createNetworkInvite(
+        session: Session,
+        displayName: String,
+        relationship: String,
+        medicalAccess: String
+    ): JSONObject = JSONObject(
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=create_invite",
+            JSONObject()
+                .put("display_name", displayName.trim())
+                .put("relationship", relationship.trim())
+                .put("medical_access", medicalAccess),
+            session.accessToken
+        ).body
+    )
+
+    fun acceptNetworkInviteCode(session: Session, code: String): JSONObject = JSONObject(
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=accept_code",
+            JSONObject().put("code", code.trim().uppercase()),
+            session.accessToken
+        ).body
+    )
+
+    fun removeNetworkLink(session: Session, linkId: String): JSONObject = JSONObject(
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=remove_link",
+            JSONObject().put("link_id", linkId),
+            session.accessToken
+        ).body
+    )
+
+    fun setNetworkMedicalAccess(session: Session, linkId: String, medicalAccess: String): JSONObject = JSONObject(
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=set_medical_access",
+            JSONObject().put("link_id", linkId).put("medical_access", medicalAccess),
+            session.accessToken
+        ).body
+    )
+
+    fun startNetworkEmergency(
+        session: Session,
+        silent: Boolean,
+        latitude: Double?,
+        longitude: Double?
+    ): JSONObject {
+        val body = JSONObject()
+            .put("mode", if (silent) "silent" else "normal")
+            .put("latitude", latitude ?: JSONObject.NULL)
+            .put("longitude", longitude ?: JSONObject.NULL)
+        return JSONObject(
+            request("POST", "/functions/v1/cerca-network?action=emergency_start", body, session.accessToken).body
+        )
+    }
+
+    fun updateNetworkEmergency(
+        session: Session,
+        emergencyId: String,
+        latitude: Double,
+        longitude: Double
+    ) {
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=emergency_update",
+            JSONObject()
+                .put("emergency_id", emergencyId)
+                .put("latitude", latitude)
+                .put("longitude", longitude),
+            session.accessToken
+        )
+    }
+
+    fun resolveNetworkEmergency(session: Session, emergencyId: String): JSONObject = JSONObject(
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=emergency_resolve",
+            JSONObject().put("emergency_id", emergencyId),
+            session.accessToken
+        ).body
+    )
+
+    fun markNetworkEmergencySeen(session: Session, emergencyId: String): JSONObject = JSONObject(
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=emergency_seen",
+            JSONObject().put("emergency_id", emergencyId),
+            session.accessToken
+        ).body
+    )
+
+    fun fetchNetworkMedical(session: Session, ownerUserId: String): JSONObject {
+        val uid = URLEncoder.encode(ownerUserId, "UTF-8")
+        return JSONObject(
+            request(
+                "GET",
+                "/functions/v1/cerca-network?action=medical&owner_user_id=$uid",
+                null,
+                session.accessToken
+            ).body
+        )
+    }
+
+    fun fetchPushConfig(session: Session): JSONObject = JSONObject(
+        request("GET", "/functions/v1/cerca-network?action=push_config", null, session.accessToken).body
+    )
+
+    fun registerNetworkDevice(session: Session, token: String): JSONObject = JSONObject(
+        request(
+            "POST",
+            "/functions/v1/cerca-network?action=register_device",
+            JSONObject().put("token", token),
+            session.accessToken
+        ).body
+    )
 
     fun isSessionNearExpiry(session: Session): Boolean {
         val now = Instant.now().epochSecond
@@ -364,7 +488,7 @@ class SupabaseApi {
             401 -> "Sesión vencida o credenciales inválidas."
             403 -> "No tenés permiso para realizar esta acción."
             429 -> "Demasiados intentos. Esperá unos minutos y probá de nuevo."
-            else -> "No pudimos conectarnos con H.E.L.P. Probá nuevamente."
+            else -> "No pudimos conectarnos con CERCA. Probá nuevamente."
         }
     }
 }

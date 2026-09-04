@@ -16,9 +16,9 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
+        versionCode = 34
         // Validación legacy del workflow: versionCode = 9
-        versionName = "8.9.1"
+        versionName = "9.0.0"
         // Compatibilidad legacy del workflow: versionName = "7.0"
     }
 
@@ -58,6 +58,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.12.0")
+    implementation("com.google.firebase:firebase-messaging:24.1.2")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.android.billingclient:billing:9.1.0")
 }

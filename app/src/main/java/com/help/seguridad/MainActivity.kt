@@ -100,6 +100,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var familyHomeButton: Button
     private lateinit var planTestCard: LinearLayout
     private lateinit var planTestStatus: TextView
+    private lateinit var silentHelpButton: Button
+    private lateinit var activeEmergencyButton: Button
 
     private lateinit var billingManager: BillingManager
     private val api = SupabaseApi()
@@ -149,7 +151,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (sentSmsParts + failedSmsParts >= expectedSmsParts && expectedSmsParts > 0) {
                 if (failedSmsParts == 0) {
-                    status.text = "SMS enviado. Iniciando llamada…"
+                    status.text = if (emergencyCallPending) "SMS enviado. Iniciando llamada…" else "SMS enviado."
                     toast("SMS enviado correctamente.")
                 } else {
                     status.text = "El SMS tuvo un problema. Iniciando llamada igual…"
@@ -221,6 +223,8 @@ class MainActivity : AppCompatActivity() {
         val session = currentSession
         if (session != null) {
             refreshAndSyncInBackground(session)
+            registerPushIfAvailable(session)
+            refreshNetworkEmergencyUiAsync(session)
         }
     }
 
@@ -313,7 +317,7 @@ class MainActivity : AppCompatActivity() {
         val phones = listOf(sms1Phone, sms2Phone, sms3Phone, sms4Phone)
         boxes.forEachIndexed { i, box ->
             val hasContact = phones[i].isNotBlank()
-            box.visibility = if (hasContact) View.VISIBLE else View.GONE
+            box.visibility = View.GONE
             val wanted = hasContact && contactPrefs().getBoolean("sms" + (i + 1) + "ShareMedical", false)
             if (box.isChecked != wanted) box.isChecked = wanted
         }
@@ -786,8 +790,7 @@ class MainActivity : AppCompatActivity() {
         val callLabel = if (callPhone.isBlank()) "—" else "${callName.ifBlank { "Contacto" }} · $callPhone"
         val smsContacts = savedSmsContacts()
         homeCallSummary.text = "Llamada: $callLabel"
-        val medicalSmsCount = smsContacts.count { it.shareMedical }
-        homeSmsSummary.text = "Avisos por SMS: ${smsContacts.size} contacto(s)" + if (medicalSmsCount > 0) " · ficha médica: $medicalSmsCount" else ""
+        homeSmsSummary.text = "Avisos por SMS: ${smsContacts.size} contacto(s) · Mi Red CERCA suma alertas dentro de la app"
         trialBadge.text = when {
             isSubscriptionActiveCached() -> "Suscripción activa"
             daysRemaining() > 0 -> "Prueba gratuita · ${daysRemaining()} día(s)"
@@ -795,6 +798,7 @@ class MainActivity : AppCompatActivity() {
         }
         status.text = "Mantené apretado 3 segundos para pedir ayuda."
         applyFamilyTestUi()
+        requestNetworkNotificationPermissionIfNeeded()
         showOnly(homePanel)
         maybeTriggerShortcutEmergency()
     }
@@ -821,15 +825,42 @@ class MainActivity : AppCompatActivity() {
 
     private fun installFamilyTestUi() {
         familyHomeButton = Button(this).apply {
-            text = "MI CÍRCULO CERCA"
+            text = "MI RED CERCA"
             setTextColor(android.graphics.Color.parseColor("#0B5960"))
             backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#DDF2F0"))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             visibility = View.GONE
         }
+        silentHelpButton = Button(this).apply {
+            text = "SOS SILENCIOSO"
+            setTextColor(android.graphics.Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#B54F45"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Activar SOS silencioso")
+                    .setMessage("Enviará el SMS, la ubicación y la alerta a tu Red CERCA, pero no realizará la llamada automática.")
+                    .setNegativeButton("CANCELAR", null)
+                    .setPositiveButton("ACTIVAR") { _, _ -> triggerHelp(true) }
+                    .show()
+            }
+        }
+        activeEmergencyButton = Button(this).apply {
+            text = "ESTOY BIEN · FINALIZAR EMERGENCIA"
+            setTextColor(android.graphics.Color.parseColor("#0B5960"))
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#DDF2F0"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            visibility = View.GONE
+            setOnClickListener { resolveActiveNetworkEmergency() }
+        }
+
         val quick = findViewById<Button>(R.id.quickAccessButton)
         val quickIndex = homePanel.indexOfChild(quick)
         homePanel.addView(familyHomeButton, if (quickIndex >= 0) quickIndex + 1 else homePanel.childCount,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(58)).apply { setMargins(0, familyDp(10), 0, 0) })
+        homePanel.addView(silentHelpButton, if (quickIndex >= 0) quickIndex + 2 else homePanel.childCount,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(58)).apply { setMargins(0, familyDp(10), 0, 0) })
+        homePanel.addView(activeEmergencyButton, if (quickIndex >= 0) quickIndex + 3 else homePanel.childCount,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(58)).apply { setMargins(0, familyDp(10), 0, 0) })
 
         planTestCard = LinearLayout(this).apply {
@@ -929,8 +960,7 @@ class MainActivity : AppCompatActivity() {
     private fun currentFamilyTestPlan(): String = accountCache().getString("family_test_plan", "individual") ?: "individual"
 
     private fun applyFamilyTestUi() {
-        // CERCA Familiar queda preservado en el código pero fuera de la versión visible.
-        if (::familyHomeButton.isInitialized) familyHomeButton.visibility = View.GONE
+        if (::familyHomeButton.isInitialized) familyHomeButton.visibility = View.VISIBLE
         if (::planTestCard.isInitialized) planTestCard.visibility = View.GONE
     }
 
@@ -1107,16 +1137,23 @@ class MainActivity : AppCompatActivity() {
         return phone && sms && (fine || coarse)
     }
 
-    private fun triggerHelp() {
+    private fun triggerHelp(silent: Boolean = false) {
         if (emergencyInProgress) return
-        if (!hasEmergencyPermissions()) {
-            status.text = "Necesito permisos de teléfono, SMS y ubicación."
+        val permissionsReady = if (silent) hasSilentEmergencyPermissions() else hasEmergencyPermissions()
+        if (!permissionsReady) {
+            status.text = if (silent) {
+                "Necesito permisos de SMS y ubicación."
+            } else {
+                "Necesito permisos de teléfono, SMS y ubicación."
+            }
             showPermissionDisclosureIfNeeded()
             return
         }
+
         emergencyInProgress = true
         enqueueActivation()
-        status.text = "Obteniendo tu ubicación…"
+        status.text = if (silent) "Activando SOS silencioso…" else "Obteniendo tu ubicación…"
+
         getCurrentLocation { latitude, longitude ->
             val personName = contactPrefs().getString("display_name", "").orEmpty().ifBlank { "Una persona" }
             val mapsLink = if (latitude != null && longitude != null) {
@@ -1129,14 +1166,26 @@ class MainActivity : AppCompatActivity() {
                 .replace("\\p{M}+".toRegex(), "")
                 .replace(Regex("[^A-Za-z0-9 ._-]"), "")
                 .trim().take(40).ifBlank { "Una persona" }
-            // Mensaje corto y GSM-7 para que salga como un único SMS siempre que sea posible.
-            val message = "HELP - $safeName necesita ayuda. Ubicacion: $mapsLink"
-            emergencyCallPending = true
+
+            val message = "CERCA - $safeName necesita ayuda. Ubicacion: $mapsLink"
+            startNetworkEmergencyAsync(silent, latitude, longitude)
+
+            emergencyCallPending = !silent
             val smsQueued = sendSmsToContacts(message)
+
+            if (silent) {
+                emergencyInProgress = false
+                status.text = if (smsQueued) {
+                    "SOS silencioso enviado. Tu Red CERCA fue alertada."
+                } else {
+                    "SOS silencioso activado. No pude confirmar el SMS."
+                }
+                return@getCurrentLocation
+            }
+
             if (!smsQueued) {
                 Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 700L)
             } else {
-                // Seguridad: si la red no devuelve callback del SMS, la llamada no queda bloqueada.
                 Handler(Looper.getMainLooper()).postDelayed({
                     if (emergencyCallPending && sentSmsParts + failedSmsParts == 0) {
                         appPrefs().edit().putString("last_sms_diag", "SIN CALLBACK DEL MODEM").apply()
@@ -1146,6 +1195,189 @@ class MainActivity : AppCompatActivity() {
                 }, 8000L)
             }
         }
+    }
+
+
+    private fun startNetworkEmergencyAsync(silent: Boolean, latitude: Double?, longitude: Double?) {
+        val session = currentSession ?: return
+        runAsync(
+            work = {
+                val fresh = ensureFreshSessionBlocking(session)
+                val result = api.startNetworkEmergency(fresh, silent, latitude, longitude)
+                Pair(fresh, result)
+            },
+            success = { (fresh, result) ->
+                currentSession = fresh
+                sessionStore.save(fresh)
+                val emergency = result.optJSONObject("emergency")
+                val id = emergency?.optString("id", "").orEmpty()
+                if (id.isNotBlank()) {
+                    accountCache().edit().putString("active_network_emergency_id", id).apply()
+                    try {
+                        ContextCompat.startForegroundService(
+                            this,
+                            Intent(this, EmergencyLocationService::class.java).putExtra("emergency_id", id)
+                        )
+                    } catch (_: Exception) {}
+                    refreshNetworkEmergencyUiAsync(fresh)
+                }
+            },
+            failure = { /* El SMS y la llamada siguen funcionando aunque falle la red CERCA. */ }
+        )
+    }
+
+    private fun refreshNetworkEmergencyUiAsync(session: SupabaseApi.Session) {
+        runAsync(
+            work = {
+                val fresh = ensureFreshSessionBlocking(session)
+                Pair(fresh, api.fetchNetworkState(fresh))
+            },
+            success = { (fresh, state) ->
+                currentSession = fresh
+                sessionStore.save(fresh)
+
+                val own = state.optJSONObject("active_emergency")
+                val ownId = own?.optString("id", "").orEmpty()
+                accountCache().edit().putString("active_network_emergency_id", ownId).apply()
+                if (::activeEmergencyButton.isInitialized) {
+                    activeEmergencyButton.visibility = if (ownId.isNotBlank()) View.VISIBLE else View.GONE
+                    if (ownId.isNotBlank()) {
+                        val seen = own?.optJSONArray("seen_by")
+                        activeEmergencyButton.text = if (seen != null && seen.length() > 0) {
+                            "ESTOY BIEN · ${seen.length()} CONTACTO(S) YA VIERON"
+                        } else {
+                            "ESTOY BIEN · FINALIZAR EMERGENCIA"
+                        }
+                    }
+                }
+
+                val alerts = state.optJSONArray("incoming_alerts")
+                if (alerts != null && alerts.length() > 0) {
+                    val alert = alerts.optJSONObject(0)
+                    if (alert != null) {
+                        val id = alert.optString("id", "")
+                        val lastShown = accountCache().getString("last_network_alert_shown", "").orEmpty()
+                        if (id.isNotBlank() && id != lastShown) {
+                            accountCache().edit().putString("last_network_alert_shown", id).apply()
+                            val data = mapOf(
+                                "event" to "active",
+                                "emergency_id" to id,
+                                "owner_user_id" to alert.optString("owner_user_id", ""),
+                                "person_name" to alert.optString("person_name", "Contacto CERCA"),
+                                "mode" to alert.optString("mode", "normal"),
+                                "latitude" to alert.optString("latitude", ""),
+                                "longitude" to alert.optString("longitude", ""),
+                                "medical_access" to alert.optString("medical_access", "never")
+                            )
+                            CercaMessagingService.showEmergencyNotification(this, data)
+                        }
+                    }
+                }
+            },
+            failure = { /* La app mantiene el SOS local aunque no haya Internet. */ }
+        )
+    }
+
+    private fun resolveActiveNetworkEmergency() {
+        val id = accountCache().getString("active_network_emergency_id", "").orEmpty()
+        val session = currentSession ?: return
+        if (id.isBlank()) {
+            toast("No hay una emergencia CERCA activa.")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("¿Estás bien?")
+            .setMessage("Al finalizar, CERCA avisará a tu red que la emergencia terminó y dejará de actualizar tu ubicación.")
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("SÍ, ESTOY BIEN") { _, _ ->
+                runAsync(
+                    work = {
+                        val fresh = ensureFreshSessionBlocking(session)
+                        api.resolveNetworkEmergency(fresh, id)
+                        fresh
+                    },
+                    success = { fresh ->
+                        currentSession = fresh
+                        sessionStore.save(fresh)
+                        accountCache().edit().remove("active_network_emergency_id").apply()
+                        try { stopService(Intent(this, EmergencyLocationService::class.java)) } catch (_: Exception) {}
+                        if (::activeEmergencyButton.isInitialized) activeEmergencyButton.visibility = View.GONE
+                        toast("Emergencia finalizada.")
+                    },
+                    failure = { e -> toast(errorMessage(e)) }
+                )
+            }.show()
+    }
+
+    private fun registerPushIfAvailable(session: SupabaseApi.Session) {
+        if (accountCache().getBoolean("push_registering", false)) return
+        accountCache().edit().putBoolean("push_registering", true).apply()
+        runAsync(
+            work = {
+                val fresh = ensureFreshSessionBlocking(session)
+                Pair(fresh, api.fetchPushConfig(fresh))
+            },
+            success = { (fresh, config) ->
+                accountCache().edit().putBoolean("push_registering", false).apply()
+                if (!config.optBoolean("enabled", false)) return@runAsync
+                try {
+                    var app = try { com.google.firebase.FirebaseApp.getInstance() } catch (_: Exception) { null }
+                    if (app == null) {
+                        val options = com.google.firebase.FirebaseOptions.Builder()
+                            .setApiKey(config.optString("apiKey"))
+                            .setApplicationId(config.optString("applicationId"))
+                            .setProjectId(config.optString("projectId"))
+                            .setGcmSenderId(config.optString("senderId"))
+                            .build()
+                        app = com.google.firebase.FirebaseApp.initializeApp(this, options)
+                    }
+                    if (app != null) {
+                        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                            .addOnSuccessListener { token ->
+                                if (token.isNotBlank()) {
+                                    runAsync(
+                                        work = {
+                                            val active = ensureFreshSessionBlocking(fresh)
+                                            api.registerNetworkDevice(active, token)
+                                            active
+                                        },
+                                        success = { active ->
+                                            currentSession = active
+                                            sessionStore.save(active)
+                                            accountCache().edit().putBoolean("push_registered", true).apply()
+                                        },
+                                        failure = { }
+                                    )
+                                }
+                            }
+                    }
+                } catch (_: Exception) {}
+            },
+            failure = {
+                accountCache().edit().putBoolean("push_registering", false).apply()
+            }
+        )
+    }
+
+    private fun requestNetworkNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        if (appPrefs().getBoolean("network_notification_prompted", false)) return
+        appPrefs().edit().putBoolean("network_notification_prompted", true).apply()
+        AlertDialog.Builder(this)
+            .setTitle("Alertas de tu Red CERCA")
+            .setMessage("Permití las notificaciones para recibir una alerta prioritaria cuando una persona de tu Red CERCA active un SOS.")
+            .setNegativeButton("AHORA NO", null)
+            .setPositiveButton("CONTINUAR") { _, _ ->
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 302)
+            }.show()
+    }
+
+    private fun hasSilentEmergencyPermissions(): Boolean {
+        val sms = ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return sms && (fine || coarse)
     }
 
     private fun enqueueActivation() {
@@ -1282,9 +1514,7 @@ class MainActivity : AppCompatActivity() {
             contacts.forEach { recipient ->
                 val destination = normalizePhone(recipient.phone)
                 if (destination.isBlank()) return@forEach
-                val recipientMessage = if (recipient.shareMedical) {
-                    medicalShareUrl()?.let { message + " Ficha medica CERCA ID: " + it } ?: message
-                } else message
+                val recipientMessage = message
                 val parts = manager.divideMessage(recipientMessage)
                 expectedSmsParts += parts.size
                 val sentIntents = ArrayList<PendingIntent>()

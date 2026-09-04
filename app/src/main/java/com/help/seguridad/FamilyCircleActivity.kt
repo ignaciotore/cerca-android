@@ -1,10 +1,13 @@
 package com.help.seguridad
 
+import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.database.Cursor
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
+import android.provider.ContactsContract
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -13,385 +16,178 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
 
 class FamilyCircleActivity : AppCompatActivity() {
+    companion object { private const val REQ_PICK = 710 }
     private val api = SupabaseApi()
     private lateinit var sessionStore: SecureSessionStore
-    private val executor = Executors.newSingleThreadExecutor()
     private lateinit var root: LinearLayout
+    private val executor = Executors.newSingleThreadExecutor()
     private var session: SupabaseApi.Session? = null
+    private var serverState = JSONObject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         sessionStore = SecureSessionStore(this)
+        session = sessionStore.load()
+        if (session == null) { finish(); return }
         val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor("#F7FAF9")) }
-        root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(22), dp(20), dp(36))
-        }
-        scroll.addView(root)
-        setContentView(scroll)
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(20), dp(20), dp(36)) }
+        scroll.addView(root); setContentView(scroll)
         loadState()
     }
 
-    override fun onDestroy() {
-        executor.shutdownNow()
-        super.onDestroy()
+    override fun onDestroy() { executor.shutdownNow(); super.onDestroy() }
+
+    private fun prefs() = getSharedPreferences("help_contacts_" + (session?.userId ?: "none"), MODE_PRIVATE)
+
+    private data class C(val slot:Int,val name:String,val phone:String,val access:String)
+    private fun contacts(): List<C> {
+        val p=prefs(); val out=mutableListOf<C>()
+        for(i in 1..4){
+            val phone=p.getString("sms"+i+"Phone","").orEmpty()
+            if(phone.isNotBlank()) out += C(i,p.getString("sms"+i+"Name","").orEmpty().ifBlank{"Contacto"},phone,p.getString("sms"+i+"MedicalAccess","emergency").orEmpty().ifBlank{"emergency"})
+        }
+        return out
     }
 
-    private fun loadState() {
-        root.removeAllViews()
-        root.addView(title("Mi Red CERCA", 29f))
-        root.addView(body("Cargando tu red de confianza…"))
+    private fun loadState(){
+        renderLoading()
+        val s=session ?: return
         executor.execute {
             try {
-                var s = sessionStore.load() ?: throw IllegalStateException("Iniciá sesión nuevamente.")
-                if (api.isSessionNearExpiry(s)) {
-                    s = api.refreshSession(s)
-                    sessionStore.save(s)
-                }
-                session = s
-                val state = api.fetchNetworkState(s)
-                runOnUiThread { render(state) }
-            } catch (e: Exception) {
-                runOnUiThread { renderError(e.message ?: "No pudimos cargar Mi Red CERCA.") }
-            }
+                val fresh=if(api.isSessionNearExpiry(s)) api.refreshSession(s) else s
+                session=fresh; sessionStore.save(fresh)
+                val state=api.fetchNetworkState(fresh)
+                runOnUiThread { serverState=state; render() }
+            } catch(e:Exception){ runOnUiThread { serverState=JSONObject(); render(); toast("No pudimos sincronizar la Red CERCA. Tus contactos siguen guardados en el teléfono.") } }
         }
     }
 
-    private fun render(state: JSONObject) {
+    private fun renderLoading(){ root.removeAllViews(); root.addView(title("Tu Red CERCA",30f)); root.addView(body("Cargando tus contactos…")) }
+
+    private fun render(){
         root.removeAllViews()
-        root.addView(title("Mi Red CERCA", 29f))
-        root.addView(body("CERCA funciona aunque tus contactos no tengan la app. Cuando también tienen CERCA, reciben alertas prioritarias y pueden acceder a las funciones que vos autorices."))
+        root.addView(title("Tu Red CERCA",30f))
+        root.addView(body("Agregá hasta 4 contactos. Si alguno también usa CERCA, lo detectamos automáticamente y activamos funciones adicionales."))
 
-        val alerts = state.optJSONArray("incoming_alerts")
-        if (alerts != null && alerts.length() > 0) {
-            val alertCard = card()
-            alertCard.setBackgroundColor(Color.parseColor("#FFF2EF"))
-            alertCard.addView(title("Alertas activas", 20f))
-            for (i in 0 until alerts.length()) {
-                val a = alerts.optJSONObject(i) ?: continue
-                val person = a.optString("person_name", "Una persona de tu Red CERCA")
-                val mode = if (a.optString("mode") == "silent") "SOS silencioso" else "SOS"
-                alertCard.addView(body("🚨 $person necesita ayuda · $mode"))
-                alertCard.addView(primary("VER ALERTA") { openAlert(a) })
+        val alerts=serverState.optJSONArray("incoming_alerts")
+        if(alerts!=null && alerts.length()>0){
+            val aCard=card(); aCard.setBackgroundColor(Color.parseColor("#FFF2EF")); aCard.addView(title("Alertas activas",20f))
+            for(i in 0 until alerts.length()){
+                val a=alerts.optJSONObject(i) ?: continue
+                aCard.addView(body("🚨 " + a.optString("person_name","Un contacto CERCA") + " necesita ayuda"))
+                aCard.addView(primary("VER ALERTA") { openAlert(a) })
             }
-            root.addView(alertCard, margin())
+            root.addView(aCard,margin())
         }
 
-        val outgoing = state.optJSONArray("outgoing")
-        val count = outgoing?.length() ?: 0
-        root.addView(TextView(this).apply {
-            text = "$count de 4 contactos configurados"
-            textSize = 14f
-            setTextColor(Color.parseColor("#0B5960"))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, dp(12), 0, dp(2))
-        })
+        if(serverState.optString("phone_e164","").isBlank()) root.addView(phoneCard(), margin())
 
-        if (outgoing != null && outgoing.length() > 0) {
-            for (i in 0 until outgoing.length()) {
-                val item = outgoing.optJSONObject(i) ?: continue
-                root.addView(outgoingCard(item), margin())
-            }
-        }
+        val local=contacts()
+        val count=TextView(this).apply { text=local.size.toString()+" de 4 contactos configurados"; textSize=15f; setTextColor(Color.parseColor("#0B5960")); setTypeface(typeface,android.graphics.Typeface.BOLD); setPadding(0,dp(14),0,dp(8)) }
+        root.addView(count)
+        if(local.size<4) root.addView(primary("＋  AGREGAR CONTACTO") { pickContact() })
 
-        if (count < 4) {
-            val invite = card()
-            invite.addView(title("Sumar un contacto a tu Red CERCA", 20f))
-            invite.addView(body("Generá una invitación y enviala por WhatsApp. Cuando la otra persona la acepte desde CERCA, queda vinculada a tu red."))
-            val name = EditText(this).apply { hint = "Nombre del contacto" }
-            val relationship = EditText(this).apply { hint = "Relación · ej. Mamá, Pareja, Amigo" }
-            invite.addView(name)
-            invite.addView(relationship)
+        val remote=serverState.optJSONArray("contacts") ?: serverState.optJSONArray("outgoing")
+        for(c in local) root.addView(contactCard(c, remote), margin())
 
-            var permission = "emergency"
-            val permissionLabel = body("Ficha médica: solo durante una emergencia")
-            invite.addView(permissionLabel)
-            invite.addView(secondary("CAMBIAR PERMISO DE FICHA") {
-                val options = arrayOf("No compartir", "Solo durante una emergencia", "Siempre")
-                AlertDialog.Builder(this)
-                    .setTitle("Compartir mi ficha médica")
-                    .setItems(options) { _, which ->
-                        permission = when (which) { 0 -> "never"; 2 -> "always"; else -> "emergency" }
-                        permissionLabel.text = "Ficha médica: " + when (permission) {
-                            "never" -> "no compartir"
-                            "always" -> "siempre disponible"
-                            else -> "solo durante una emergencia"
-                        }
-                    }.show()
-            })
-            invite.addView(primary("GENERAR INVITACIÓN") {
-                createInvite(name.text.toString(), relationship.text.toString(), permission)
-            })
-            root.addView(invite, margin())
-        }
-
-        val join = card()
-        join.addView(title("¿Te invitaron a una Red CERCA?", 20f))
-        join.addView(body("Ingresá el código que recibiste por WhatsApp."))
-        val code = EditText(this).apply {
-            hint = "Código de invitación"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-            setSingleLine(true)
-        }
-        join.addView(code)
-        join.addView(primary("ACEPTAR INVITACIÓN") { acceptCode(code.text.toString()) })
-        root.addView(join, margin())
-
-        val incoming = state.optJSONArray("incoming")
-        if (incoming != null && incoming.length() > 0) {
-            val shared = card()
-            shared.addView(title("Personas que te tienen en su Red CERCA", 20f))
-            shared.addView(body("Desde acá podés ver la ficha médica cuando esa persona te dio permiso."))
-            for (i in 0 until incoming.length()) {
-                val item = incoming.optJSONObject(i) ?: continue
-                val name = item.optString("owner_name", "Contacto CERCA")
-                val access = item.optString("medical_access", "never")
-                val label = when (access) {
-                    "always" -> "Ficha disponible siempre"
-                    "emergency" -> "Ficha disponible durante una emergencia"
-                    else -> "No comparte ficha"
-                }
-                shared.addView(title(name, 17f))
-                shared.addView(body(label))
-                if (access != "never") {
-                    shared.addView(secondary("VER FICHA MÉDICA") {
-                        showMedical(item.optString("owner_user_id"), name)
-                    })
-                }
-            }
-            root.addView(shared, margin())
-        }
-
-        root.addView(secondary("ACTUALIZAR") { loadState() }, margin())
-        root.addView(secondary("VOLVER") { finish() }, margin())
+        val info=card(); info.addView(body("Los contactos reciben el SMS aunque no tengan CERCA. Si tienen la app, además reciben la alerta prioritaria y las funciones que autorices.")); root.addView(info,margin())
+        root.addView(secondary("ACTUALIZAR ESTADO") { syncAndReload() },margin())
+        root.addView(secondary("VOLVER") { finish() },margin())
     }
 
-    private fun outgoingCard(item: JSONObject): LinearLayout {
-        val c = card()
-        val name = item.optString("display_name", "Contacto")
-        val status = item.optString("status", "pending")
-        val relationship = item.optString("relationship", "Contacto")
-        val hasCerca = item.optBoolean("has_cerca", false)
-        val access = item.optString("medical_access", "emergency")
-        c.addView(title(name, 18f))
-        c.addView(body("$relationship · " + if (hasCerca) "CERCA activo ✓" else "Invitación pendiente"))
-        c.addView(body("Ficha médica: " + when (access) {
-            "always" -> "siempre"
-            "never" -> "no compartir"
-            else -> "solo en emergencia"
-        }))
-
-        if (status == "pending") {
-            val code = item.optString("invite_code", "")
-            if (code.isNotBlank()) {
-                c.addView(body("Código: ${code.uppercase()}"))
-                c.addView(primary("ENVIAR POR WHATSAPP") { shareInvite(name, code) })
-            }
-        } else {
-            c.addView(secondary("CAMBIAR ACCESO A FICHA") {
-                chooseMedicalAccess(item.optString("id"), access)
-            })
-        }
-        c.addView(danger(if (status == "pending") "CANCELAR INVITACIÓN" else "QUITAR DE MI RED") {
-            confirmRemove(item.optString("id"), name)
-        })
+    private fun phoneCard(): LinearLayout {
+        val c=card(); c.addView(title("Completá tu teléfono",20f)); c.addView(body("Lo usamos para que otros usuarios CERCA puedan reconocerte automáticamente cuando te agregan como contacto."))
+        val input=EditText(this).apply { hint="Ej. +54 9 11 1234 5678"; inputType=android.text.InputType.TYPE_CLASS_PHONE; setBackgroundResource(R.drawable.input_bg); setPadding(dp(14),dp(12),dp(14),dp(12)) }
+        c.addView(input)
+        c.addView(primary("GUARDAR MI TELÉFONO") { savePhone(input.text.toString()) })
         return c
     }
 
-    private fun createInvite(displayName: String, relationship: String, permission: String) {
-        val cleanName = displayName.trim()
-        if (cleanName.length < 2) { toast("Ingresá el nombre del contacto."); return }
-        val s = session ?: run { toast("Iniciá sesión nuevamente."); return }
-        executor.execute {
-            try {
-                val result = api.createNetworkInvite(s, cleanName, relationship, permission)
-                val code = result.optString("invite_code", "")
-                runOnUiThread {
-                    if (code.isBlank()) toast("La invitación se creó, pero no encontramos el código.")
-                    else {
-                        toast("Invitación creada.")
-                        shareInvite(cleanName, code)
-                    }
-                    loadState()
-                }
-            } catch (e: Exception) {
-                runOnUiThread { toast(e.message ?: "No pudimos crear la invitación.") }
-            }
-        }
+    private fun contactCard(c:C, remote:JSONArray?): LinearLayout {
+        val rc=findRemote(c.phone,remote); val has=rc?.optBoolean("has_cerca",false)==true
+        val box=card()
+        val top=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=android.view.Gravity.CENTER_VERTICAL }
+        val left=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        left.addView(title(c.name,19f)); left.addView(body(c.phone))
+        top.addView(left,LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f))
+        top.addView(TextView(this).apply { text=if(has) "✓ Tiene CERCA" else "Sin CERCA"; textSize=13f; setTypeface(typeface,android.graphics.Typeface.BOLD); setTextColor(Color.parseColor(if(has)"#0B5960" else "#657579")); setPadding(dp(10),dp(7),dp(10),dp(7)); setBackgroundColor(Color.parseColor(if(has)"#DDF2F0" else "#EEF1F1")) })
+        box.addView(top)
+        val call=prefs().getString("callPhone","").orEmpty()==c.phone
+        box.addView(body("SMS activo" + (if(call) "  ·  Llamada activa" else "") + (if(has) "\nAlerta prioritaria activa  ·  Ficha médica: "+accessLabel(c.access) else "")))
+        if(!call) box.addView(secondary("USAR PARA LLAMADA") { setCall(c) })
+        if(has) box.addView(secondary("PERMISO DE FICHA MÉDICA") { chooseAccess(c) })
+        box.addView(danger("QUITAR CONTACTO") { removeContact(c) })
+        return box
     }
 
-    private fun acceptCode(raw: String) {
-        val code = raw.trim().uppercase().replace(Regex("[^A-Z0-9]"), "")
-        if (code.length < 6) { toast("Ingresá el código de invitación."); return }
-        post({ s -> api.acceptNetworkInviteCode(s, code) }, "Ya sos parte de esa Red CERCA.")
+    private fun findRemote(phone:String, arr:JSONArray?):JSONObject?{ if(arr==null)return null; for(i in 0 until arr.length()){ val o=arr.optJSONObject(i)?:continue; if(norm(o.optString("phone_e164"))==norm(phone)) return o }; return null }
+    private fun accessLabel(v:String)=when(v){"always"->"siempre";"never"->"no compartir";else->"solo en emergencia"}
+
+    private fun chooseAccess(c:C){
+        val opts=arrayOf("No compartir","Solo durante una emergencia","Siempre")
+        val checked=when(c.access){"never"->0;"always"->2;else->1}
+        AlertDialog.Builder(this).setTitle("Ficha médica para "+c.name).setSingleChoiceItems(opts,checked){d,w->
+            val v=when(w){0->"never";2->"always";else->"emergency"}; d.dismiss(); prefs().edit().putString("sms"+c.slot+"MedicalAccess",v).apply(); syncAndReload()
+        }.show()
     }
 
-    private fun chooseMedicalAccess(linkId: String, current: String) {
-        val options = arrayOf("No compartir", "Solo durante una emergencia", "Siempre")
-        val checked = when (current) { "never" -> 0; "always" -> 2; else -> 1 }
-        AlertDialog.Builder(this)
-            .setTitle("Compartir mi ficha médica")
-            .setSingleChoiceItems(options, checked) { dialog, which ->
-                val access = when (which) { 0 -> "never"; 2 -> "always"; else -> "emergency" }
-                dialog.dismiss()
-                post({ s -> api.setNetworkMedicalAccess(s, linkId, access) }, "Permiso actualizado.")
-            }.show()
+    private fun setCall(c:C){ prefs().edit().putString("callName",c.name).putString("callPhone",c.phone).apply(); syncAndReload() }
+
+    private fun removeContact(c:C){
+        AlertDialog.Builder(this).setTitle("Quitar a "+c.name).setMessage("Dejará de recibir tus alertas CERCA.").setNegativeButton("CANCELAR",null).setPositiveButton("QUITAR"){_,_->
+            val p=prefs(); val wasCall=p.getString("callPhone","").orEmpty()==c.phone
+            p.edit().putString("sms"+c.slot+"Name","").putString("sms"+c.slot+"Phone","").putString("sms"+c.slot+"MedicalAccess","emergency").apply()
+            if(wasCall){ val next=contacts().firstOrNull(); p.edit().putString("callName",next?.name ?: "").putString("callPhone",next?.phone ?: "").apply() }
+            compactSlots(); syncAndReload()
+        }.show()
     }
 
-    private fun confirmRemove(linkId: String, name: String) {
-        AlertDialog.Builder(this)
-            .setTitle("Quitar a $name")
-            .setMessage("Dejará de formar parte de tu Red CERCA.")
-            .setNegativeButton("CANCELAR", null)
-            .setPositiveButton("QUITAR") { _, _ ->
-                post({ s -> api.removeNetworkLink(s, linkId) }, "Contacto quitado.")
-            }.show()
+    private fun compactSlots(){
+        val old=contacts(); val p=prefs().edit()
+        for(i in 1..4){p.putString("sms"+i+"Name","").putString("sms"+i+"Phone","").putString("sms"+i+"MedicalAccess","emergency")}
+        old.forEachIndexed{i,c-> val n=i+1; p.putString("sms"+n+"Name",c.name).putString("sms"+n+"Phone",c.phone).putString("sms"+n+"MedicalAccess",c.access)}; p.apply()
     }
 
-    private fun shareInvite(displayName: String, code: String) {
-        val message = """
-            Hola $displayName, te agregué a mi Red CERCA.
+    private fun pickContact(){ if(contacts().size>=4){toast("Ya tenés 4 contactos.");return}; try{startActivityForResult(Intent(Intent.ACTION_PICK,ContactsContract.CommonDataKinds.Phone.CONTENT_URI),REQ_PICK)}catch(_:Exception){toast("No pude abrir tus contactos.")} }
 
-            Instalá CERCA desde:
-            https://cerca-cuidarte.vercel.app
-
-            Después entrá a Mi Red CERCA e ingresá este código:
-
-            ${code.uppercase()}
-
-            Si formamos parte de la misma Red CERCA, podés recibir mis alertas prioritarias y las funciones que yo autorice.
-        """.trimIndent()
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, message)
-        }
-        try {
-            startActivity(Intent.createChooser(send, "Compartir invitación CERCA"))
-        } catch (_: Exception) {
-            toast("No pude abrir la opción para compartir.")
-        }
+    @Deprecated("compat")
+    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
+        super.onActivityResult(requestCode,resultCode,data); if(requestCode!=REQ_PICK || resultCode!=Activity.RESULT_OK)return
+        val uri=data?.data ?: return; var n=""; var p=""; var cur:Cursor?=null
+        try{cur=contentResolver.query(uri,arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,ContactsContract.CommonDataKinds.Phone.NUMBER),null,null,null); if(cur!=null&&cur.moveToFirst()){val ni=cur.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);val pi=cur.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);if(ni>=0)n=cur.getString(ni)?:"";if(pi>=0)p=cur.getString(pi)?:""}}finally{cur?.close()}
+        p=norm(p); if(p.isBlank()){toast("Ese contacto no tiene un teléfono válido.");return}; if(contacts().any{norm(it.phone)==p}){toast("Ese contacto ya está agregado.");return}
+        val slot=(1..4).firstOrNull{i->prefs().getString("sms"+i+"Phone","").isNullOrBlank()} ?: return
+        val e=prefs().edit().putString("sms"+slot+"Name",n.ifBlank{"Contacto"}).putString("sms"+slot+"Phone",p).putString("sms"+slot+"MedicalAccess","emergency")
+        if(prefs().getString("callPhone","").isNullOrBlank()) e.putString("callName",n.ifBlank{"Contacto"}).putString("callPhone",p)
+        e.apply(); syncAndReload()
     }
 
-    private fun openAlert(alert: JSONObject) {
-        startActivity(Intent(this, EmergencyAlertActivity::class.java).apply {
-            putExtra("emergency_id", alert.optString("id"))
-            putExtra("owner_user_id", alert.optString("owner_user_id"))
-            putExtra("person_name", alert.optString("person_name", "Contacto CERCA"))
-            putExtra("mode", alert.optString("mode", "normal"))
-            putExtra("latitude", alert.optString("latitude", ""))
-            putExtra("longitude", alert.optString("longitude", ""))
-            putExtra("medical_access", alert.optString("medical_access", "never"))
-        })
+    private fun savePhone(raw:String){
+        if(norm(raw).length<9){toast("Ingresá un número válido.");return}; val s=session?:return
+        executor.execute{try{val r=api.setNetworkPhone(s,raw);runOnUiThread{toast("Teléfono guardado.");loadState()}}catch(e:Exception){runOnUiThread{toast(e.message?:"No pudimos guardar tu teléfono.")}}}
     }
 
-    private fun showMedical(userId: String, personName: String) {
-        if (userId.isBlank()) return
-        val s = session ?: return
-        toast("Cargando ficha de $personName…")
-        executor.execute {
-            try {
-                val result = api.fetchNetworkMedical(s, userId)
-                runOnUiThread { showMedicalDialog(personName, result) }
-            } catch (e: Exception) {
-                runOnUiThread { toast(e.message ?: "No pudimos cargar la ficha.") }
-            }
-        }
+    private fun syncAndReload(){
+        val s=session ?: return; val a=JSONArray(); val call=prefs().getString("callPhone","").orEmpty()
+        for(c in contacts()) a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",true).put("call_enabled",c.phone==call).put("medical_access",c.access))
+        executor.execute{try{val state=api.syncNetworkContacts(s,a);runOnUiThread{serverState=state;render()}}catch(e:Exception){runOnUiThread{render();toast(e.message?:"Los contactos quedaron guardados en el teléfono y se sincronizarán cuando vuelva Internet.")}}}
     }
 
-    private fun showMedicalDialog(personName: String, result: JSONObject) {
-        val m = result.optJSONObject("medical")
-        if (m == null) { toast("Esta persona todavía no completó su ficha médica."); return }
-        fun field(label: String, key: String): String {
-            val value = m.optString(key, "").trim()
-            return if (value.isBlank()) "" else "$label: $value\n"
-        }
-        val text = buildString {
-            append(field("Nombre", "full_name"))
-            append(field("Nacimiento", "birth_date"))
-            append(field("Grupo sanguíneo", "blood_type"))
-            append(field("Alergias", "allergies"))
-            append(field("Medicaciones importantes", "medications"))
-            append(field("Condiciones", "conditions"))
-            append(field("Cobertura", "health_provider"))
-            append(field("N.º afiliado", "member_number"))
-            val ec = m.optString("emergency_contact_name", "").trim()
-            val ep = m.optString("emergency_contact_phone", "").trim()
-            if (ec.isNotBlank() || ep.isNotBlank()) append("Contacto de emergencia: $ec $ep\n")
-            append(field("Notas", "notes"))
-        }.trim()
-        AlertDialog.Builder(this)
-            .setTitle("Ficha médica · $personName")
-            .setMessage(text.ifBlank { "La ficha todavía está vacía." })
-            .setPositiveButton("CERRAR", null)
-            .show()
-    }
+    private fun openAlert(a:JSONObject){ startActivity(Intent(this,EmergencyAlertActivity::class.java).apply{putExtra("emergency_id",a.optString("id"));putExtra("owner_user_id",a.optString("owner_user_id"));putExtra("person_name",a.optString("person_name","Contacto CERCA"));putExtra("mode",a.optString("mode","normal"));putExtra("latitude",a.optString("latitude",""));putExtra("longitude",a.optString("longitude",""));putExtra("medical_access",a.optString("medical_access","never"))}) }
 
-    private fun post(call: (SupabaseApi.Session) -> JSONObject, success: String) {
-        val s = session ?: run { toast("Iniciá sesión nuevamente."); return }
-        executor.execute {
-            try {
-                call(s)
-                runOnUiThread { toast(success); loadState() }
-            } catch (e: Exception) {
-                runOnUiThread { toast(e.message ?: "No pudimos completar la operación.") }
-            }
-        }
-    }
-
-    private fun renderError(message: String) {
-        root.removeAllViews()
-        root.addView(title("Mi Red CERCA", 29f))
-        root.addView(body(message))
-        root.addView(secondary("REINTENTAR") { loadState() }, margin())
-        root.addView(secondary("VOLVER") { finish() }, margin())
-    }
-
-    private fun card() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(17), dp(16), dp(17), dp(16))
-        setBackgroundResource(R.drawable.card_bg)
-    }
-
-    private fun title(value: String, size: Float) = TextView(this).apply {
-        text = value
-        textSize = size
-        setTextColor(Color.parseColor("#0B5960"))
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-    }
-
-    private fun body(value: String) = TextView(this).apply {
-        text = value
-        textSize = 14f
-        setTextColor(Color.parseColor("#657579"))
-        setPadding(0, dp(6), 0, dp(8))
-    }
-
-    private fun primary(value: String, action: () -> Unit) = Button(this).apply {
-        text = value
-        setTextColor(Color.WHITE)
-        backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0B5960"))
-        setOnClickListener { action() }
-    }
-
-    private fun secondary(value: String, action: () -> Unit) = Button(this).apply {
-        text = value
-        setTextColor(Color.parseColor("#0B5960"))
-        backgroundTintList = ColorStateList.valueOf(Color.parseColor("#DDF2F0"))
-        setOnClickListener { action() }
-    }
-
-    private fun danger(value: String, action: () -> Unit) = Button(this).apply {
-        text = value
-        setTextColor(Color.parseColor("#B54F45"))
-        backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F8ECE8"))
-        setOnClickListener { action() }
-    }
-
-    private fun margin() = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(12), 0, 0) }
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun norm(raw:String):String{ val v=raw.trim(); return v.filterIndexed{i,ch->ch.isDigit() || (ch=='+'&&i==0)} }
+    private fun card()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(17),dp(16),dp(17),dp(16));setBackgroundResource(R.drawable.card_bg)}
+    private fun title(v:String,s:Float)=TextView(this).apply{text=v;textSize=s;setTextColor(Color.parseColor("#0B5960"));setTypeface(typeface,android.graphics.Typeface.BOLD)}
+    private fun body(v:String)=TextView(this).apply{text=v;textSize=14f;setTextColor(Color.parseColor("#657579"));setPadding(0,dp(6),0,dp(8))}
+    private fun primary(v:String,f:()->Unit)=Button(this).apply{text=v;setTextColor(Color.WHITE);backgroundTintList=ColorStateList.valueOf(Color.parseColor("#0B5960"));setTypeface(typeface,android.graphics.Typeface.BOLD);setOnClickListener{f()}}
+    private fun secondary(v:String,f:()->Unit)=Button(this).apply{text=v;setTextColor(Color.parseColor("#0B5960"));backgroundTintList=ColorStateList.valueOf(Color.parseColor("#DDF2F0"));setTypeface(typeface,android.graphics.Typeface.BOLD);setOnClickListener{f()}}
+    private fun danger(v:String,f:()->Unit)=Button(this).apply{text=v;setTextColor(Color.parseColor("#B54F45"));backgroundTintList=ColorStateList.valueOf(Color.parseColor("#F8ECE8"));setTypeface(typeface,android.graphics.Typeface.BOLD);setOnClickListener{f()}}
+    private fun margin()=LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,dp(12),0,0)}
+    private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
+    private fun toast(v:String)=Toast.makeText(this,v,Toast.LENGTH_LONG).show()
 }

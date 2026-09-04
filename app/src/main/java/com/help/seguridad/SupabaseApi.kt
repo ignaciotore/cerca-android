@@ -36,7 +36,8 @@ class SupabaseApi {
         val email: String,
         val trialStartedAt: String,
         val trialEndsAt: String,
-        val serverEpochMs: Long
+        val serverEpochMs: Long,
+        val phoneE164: String
     )
 
     data class Entitlement(
@@ -63,11 +64,11 @@ class SupabaseApi {
 
     class ApiException(val status: Int, override val message: String) : Exception(message)
 
-    fun signUp(fullName: String, email: String, password: String): SignUpResult {
+    fun signUp(fullName: String, email: String, password: String, phone: String): SignUpResult {
         val familyProbe = request(
             "POST",
             "/functions/v1/cerca-family-signup",
-            JSONObject().put("full_name", fullName.trim()).put("email", email.trim()).put("password", password),
+            JSONObject().put("full_name", fullName.trim()).put("email", email.trim()).put("password", password).put("phone_e164", normalizeAccountPhone(phone)),
             null
         )
         val familyJson = JSONObject(familyProbe.body.ifBlank { "{}" })
@@ -83,7 +84,7 @@ class SupabaseApi {
         val body = JSONObject()
             .put("email", email.trim())
             .put("password", password)
-            .put("data", JSONObject().put("full_name", fullName.trim()))
+            .put("data", JSONObject().put("full_name", fullName.trim()).put("phone_e164", normalizeAccountPhone(phone)))
         val response = request("POST", "/auth/v1/signup?redirect_to=$redirect", body, null)
         val json = JSONObject(response.body.ifBlank { "{}" })
         val access = json.optString("access_token", "")
@@ -116,7 +117,7 @@ class SupabaseApi {
         val uid = URLEncoder.encode(session.userId, "UTF-8")
         val response = request(
             "GET",
-            "/rest/v1/profiles?user_id=eq.$uid&select=full_name,email,trial_started_at,trial_ends_at",
+            "/rest/v1/profiles?user_id=eq.$uid&select=full_name,email,trial_started_at,trial_ends_at,phone_e164",
             null,
             session.accessToken
         )
@@ -128,7 +129,8 @@ class SupabaseApi {
             email = o.optString("email", session.email),
             trialStartedAt = o.optString("trial_started_at", ""),
             trialEndsAt = o.optString("trial_ends_at", ""),
-            serverEpochMs = response.serverEpochMs
+            serverEpochMs = response.serverEpochMs,
+            phoneE164 = o.optString("phone_e164", "").takeUnless { it == "null" } ?: ""
         )
     }
 
@@ -288,8 +290,16 @@ class SupabaseApi {
     }
 
 
+    fun setNetworkPhone(session: Session, phone: String): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-network-v2?action=set_phone", JSONObject().put("phone", phone), session.accessToken).body
+    )
+
+    fun syncNetworkContacts(session: Session, contacts: JSONArray): JSONObject = JSONObject(
+        request("POST", "/functions/v1/cerca-network-v2?action=sync_contacts", JSONObject().put("contacts", contacts), session.accessToken).body
+    )
+
     fun fetchNetworkState(session: Session): JSONObject = JSONObject(
-        request("GET", "/functions/v1/cerca-network?action=state", null, session.accessToken).body
+        request("GET", "/functions/v1/cerca-network-v2?action=state", null, session.accessToken).body
     )
 
     fun createNetworkInvite(
@@ -300,7 +310,7 @@ class SupabaseApi {
     ): JSONObject = JSONObject(
         request(
             "POST",
-            "/functions/v1/cerca-network?action=create_invite",
+            "/functions/v1/cerca-network-v2?action=create_invite",
             JSONObject()
                 .put("display_name", displayName.trim())
                 .put("relationship", relationship.trim())
@@ -312,7 +322,7 @@ class SupabaseApi {
     fun acceptNetworkInviteCode(session: Session, code: String): JSONObject = JSONObject(
         request(
             "POST",
-            "/functions/v1/cerca-network?action=accept_code",
+            "/functions/v1/cerca-network-v2?action=accept_code",
             JSONObject().put("code", code.trim().uppercase()),
             session.accessToken
         ).body
@@ -321,7 +331,7 @@ class SupabaseApi {
     fun removeNetworkLink(session: Session, linkId: String): JSONObject = JSONObject(
         request(
             "POST",
-            "/functions/v1/cerca-network?action=remove_link",
+            "/functions/v1/cerca-network-v2?action=remove_link",
             JSONObject().put("link_id", linkId),
             session.accessToken
         ).body
@@ -330,7 +340,7 @@ class SupabaseApi {
     fun setNetworkMedicalAccess(session: Session, linkId: String, medicalAccess: String): JSONObject = JSONObject(
         request(
             "POST",
-            "/functions/v1/cerca-network?action=set_medical_access",
+            "/functions/v1/cerca-network-v2?action=set_medical_access",
             JSONObject().put("link_id", linkId).put("medical_access", medicalAccess),
             session.accessToken
         ).body
@@ -347,7 +357,7 @@ class SupabaseApi {
             .put("latitude", latitude ?: JSONObject.NULL)
             .put("longitude", longitude ?: JSONObject.NULL)
         return JSONObject(
-            request("POST", "/functions/v1/cerca-network?action=emergency_start", body, session.accessToken).body
+            request("POST", "/functions/v1/cerca-network-v2?action=emergency_start", body, session.accessToken).body
         )
     }
 
@@ -359,7 +369,7 @@ class SupabaseApi {
     ) {
         request(
             "POST",
-            "/functions/v1/cerca-network?action=emergency_update",
+            "/functions/v1/cerca-network-v2?action=emergency_update",
             JSONObject()
                 .put("emergency_id", emergencyId)
                 .put("latitude", latitude)
@@ -371,7 +381,7 @@ class SupabaseApi {
     fun resolveNetworkEmergency(session: Session, emergencyId: String): JSONObject = JSONObject(
         request(
             "POST",
-            "/functions/v1/cerca-network?action=emergency_resolve",
+            "/functions/v1/cerca-network-v2?action=emergency_resolve",
             JSONObject().put("emergency_id", emergencyId),
             session.accessToken
         ).body
@@ -380,7 +390,7 @@ class SupabaseApi {
     fun markNetworkEmergencySeen(session: Session, emergencyId: String): JSONObject = JSONObject(
         request(
             "POST",
-            "/functions/v1/cerca-network?action=emergency_seen",
+            "/functions/v1/cerca-network-v2?action=emergency_seen",
             JSONObject().put("emergency_id", emergencyId),
             session.accessToken
         ).body
@@ -391,7 +401,7 @@ class SupabaseApi {
         return JSONObject(
             request(
                 "GET",
-                "/functions/v1/cerca-network?action=medical&owner_user_id=$uid",
+                "/functions/v1/cerca-network-v2?action=medical&owner_user_id=$uid",
                 null,
                 session.accessToken
             ).body
@@ -399,13 +409,13 @@ class SupabaseApi {
     }
 
     fun fetchPushConfig(session: Session): JSONObject = JSONObject(
-        request("GET", "/functions/v1/cerca-network?action=push_config", null, session.accessToken).body
+        request("GET", "/functions/v1/cerca-network-v2?action=push_config", null, session.accessToken).body
     )
 
     fun registerNetworkDevice(session: Session, token: String): JSONObject = JSONObject(
         request(
             "POST",
-            "/functions/v1/cerca-network?action=register_device",
+            "/functions/v1/cerca-network-v2?action=register_device",
             JSONObject().put("token", token),
             session.accessToken
         ).body
@@ -414,6 +424,13 @@ class SupabaseApi {
     fun isSessionNearExpiry(session: Session): Boolean {
         val now = Instant.now().epochSecond
         return session.expiresAtEpochSeconds <= now + 120L
+    }
+
+    private fun normalizeAccountPhone(raw: String): String {
+        val clean = raw.trim().filterIndexed { index, c -> c.isDigit() || (c == '+' && index == 0) }
+        if (clean.startsWith("+")) return clean
+        val digits = clean.filter { it.isDigit() }.trimStart('0')
+        return if (digits.startsWith("54")) "+" + digits else if (digits.length >= 10) "+549" + digits else clean
     }
 
     private data class RawResponse(val status: Int, val body: String, val serverEpochMs: Long)

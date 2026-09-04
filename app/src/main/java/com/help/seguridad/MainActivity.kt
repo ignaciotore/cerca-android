@@ -54,6 +54,8 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_SMS3_CONTACT = 204
         private const val REQ_SMS4_CONTACT = 205
         private const val REQ_PERMISSIONS = 301
+        private const val REQ_SMS_PERMISSION = 303
+        private const val REQ_OTHER_PERMISSIONS = 304
 
         private const val ACTION_SMS_SENT = "com.help.seguridad.HELP_SMS_SENT"
         private const val ACTION_SMS_DELIVERED = "com.help.seguridad.HELP_SMS_DELIVERED"
@@ -74,6 +76,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var loginPassword: EditText
     private lateinit var signupName: EditText
     private lateinit var signupEmail: EditText
+    private lateinit var signupPhone: EditText
     private lateinit var signupPassword: EditText
     private lateinit var signupPassword2: EditText
 
@@ -182,6 +185,7 @@ class MainActivity : AppCompatActivity() {
         sessionStore = SecureSessionStore(this)
         activationQueue = ActivationQueue(this)
         bindViews()
+        installAccountPhoneUi()
         installSmsMedicalOptions()
         installFamilyTestUi()
         registerSmsReceivers()
@@ -244,10 +248,10 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun checkForAppUpdate() {
+    private fun checkForAppUpdate(force: Boolean = false) {
         val prefs = appPrefs()
         val now = System.currentTimeMillis()
-        if (now - prefs.getLong("last_update_check_ms", 0L) < 6L * 60L * 60L * 1000L) return
+        if (!force && now - prefs.getLong("last_update_check_ms", 0L) < 6L * 60L * 60L * 1000L) return
         prefs.edit().putLong("last_update_check_ms", now).apply()
         executor.execute {
             try {
@@ -257,7 +261,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val body = c.inputStream.bufferedReader().use { it.readText() }; c.disconnect()
                 val j = org.json.JSONObject(body)
-                if (j.optInt("version_code", BuildConfig.VERSION_CODE) <= BuildConfig.VERSION_CODE) return@execute
+                if (j.optInt("version_code", BuildConfig.VERSION_CODE) <= BuildConfig.VERSION_CODE) { if (force) runOnUiThread { toast("Ya tenés la última versión de CERCA.") }; return@execute }
                 val name = j.optString("version_name", "nueva")
                 val msg = j.optString("message", "Hay una nueva versión de CERCA disponible.")
                 val dl = j.optString("download_url", "https://cerca-cuidarte.vercel.app")
@@ -307,6 +311,53 @@ class MainActivity : AppCompatActivity() {
         homeSmsSummary = findViewById(R.id.homeSmsSummary)
         profileData = findViewById(R.id.profileData)
         subscriptionStatus = findViewById(R.id.subscriptionStatus)
+    }
+
+    private fun installAccountPhoneUi() {
+        signupPhone = EditText(this).apply {
+            hint = "Teléfono celular · ej. +54 9 11 1234 5678"
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            textSize = 16f
+            setBackgroundResource(R.drawable.input_bg)
+        }
+        val signupParent = signupEmail.parent as LinearLayout
+        signupParent.addView(signupPhone, signupParent.indexOfChild(signupEmail) + 1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = familyDp(10) })
+
+        val back = findViewById<Button>(R.id.profileBackButton)
+        val parent = back.parent as LinearLayout
+        val idx = parent.indexOfChild(back)
+        parent.addView(Button(this).apply {
+            text = "MI TELÉFONO CERCA"
+            setTextColor(android.graphics.Color.parseColor("#0B5960"))
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#DDF2F0"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setOnClickListener { showPhoneDialog() }
+        }, idx, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(52)).apply { setMargins(0, familyDp(10), 0, 0) })
+        parent.addView(Button(this).apply {
+            text = "BUSCAR ACTUALIZACIONES"
+            setTextColor(android.graphics.Color.parseColor("#0B5960"))
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#E8F2F0"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setOnClickListener { checkForAppUpdate(true) }
+        }, idx + 1, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, familyDp(52)).apply { setMargins(0, familyDp(8), 0, 0) })
+    }
+
+    private fun showPhoneDialog() {
+        val input = EditText(this).apply { hint = "+54 9 11 1234 5678"; inputType = android.text.InputType.TYPE_CLASS_PHONE; setText(accountCache().getString("phone_e164", "")) }
+        AlertDialog.Builder(this).setTitle("Tu teléfono CERCA").setMessage("Permite detectar automáticamente si un contacto también tiene CERCA.").setView(input).setNegativeButton("CANCELAR", null).setPositiveButton("GUARDAR") { _, _ -> saveAccountPhone(input.text.toString()) }.show()
+    }
+
+    private fun saveAccountPhone(raw: String) {
+        val session = currentSession ?: return
+        if (normalizePhone(raw).length < 9) { toast("Ingresá un teléfono válido."); return }
+        runAsync(work = { val fresh = ensureFreshSessionBlocking(session); Pair(fresh, api.setNetworkPhone(fresh, raw)) }, success = { (fresh, result) -> currentSession = fresh; sessionStore.save(fresh); accountCache().edit().putString("phone_e164", result.optString("phone_e164", raw)).apply(); toast("Teléfono guardado."); if (profilePanel.visibility == View.VISIBLE) showProfile() }, failure = { e -> toast(errorMessage(e)) })
+    }
+
+    private fun promptPhoneIfNeeded() {
+        if (accountCache().getString("phone_e164", "").orEmpty().isNotBlank()) return
+        val now = System.currentTimeMillis(); if (now - appPrefs().getLong("phone_prompt_ms", 0L) < 24L * 60L * 60L * 1000L) return
+        appPrefs().edit().putLong("phone_prompt_ms", now).apply()
+        AlertDialog.Builder(this).setTitle("Completá tu teléfono").setMessage("Ahora CERCA detecta automáticamente cuáles de tus contactos también usan la app. Para eso necesitamos tu número de celular.").setNegativeButton("MÁS TARDE", null).setPositiveButton("COMPLETAR") { _, _ -> showPhoneDialog() }.show()
     }
 
     private fun installSmsMedicalOptions() {
@@ -502,17 +553,19 @@ class MainActivity : AppCompatActivity() {
     private fun doSignup() {
         val fullName = signupName.text.toString().trim()
         val email = signupEmail.text.toString().trim()
+        val phone = signupPhone.text.toString().trim()
         val pass = signupPassword.text.toString()
         val pass2 = signupPassword2.text.toString()
         when {
             fullName.length < 2 -> { toast("Ingresá tu nombre y apellido."); return }
             !email.contains("@") -> { toast("Ingresá un email válido."); return }
+            normalizePhone(phone).length < 9 -> { toast("Ingresá tu teléfono celular."); return }
             pass.length < 8 -> { toast("La contraseña debe tener al menos 8 caracteres."); return }
             pass != pass2 -> { toast("Las contraseñas no coinciden."); return }
         }
         showLoading("Creando tu cuenta…")
         runAsync(
-            work = { api.signUp(fullName, email, pass) },
+            work = { api.signUp(fullName, email, pass, phone) },
             success = { result ->
                 signupPassword.setText("")
                 signupPassword2.setText("")
@@ -656,6 +709,7 @@ class MainActivity : AppCompatActivity() {
         accountCache().edit()
             .putString("full_name", profile.fullName)
             .putString("email", profile.email)
+            .putString("phone_e164", profile.phoneE164)
             .putLong("trial_end_ms", trialEnd)
             .putBoolean("server_subscription_active", serverActive)
             .putLong("server_subscription_expires_ms", subscriptionExpiry)
@@ -831,6 +885,7 @@ class MainActivity : AppCompatActivity() {
         applyFamilyTestUi()
         requestNetworkNotificationPermissionIfNeeded()
         showOnly(homePanel)
+        promptPhoneIfNeeded()
         maybeTriggerShortcutEmergency()
     }
 
@@ -845,7 +900,7 @@ class MainActivity : AppCompatActivity() {
         applyFamilyTestUi()
         val displayName = contactPrefs().getString("display_name", "").orEmpty()
             .ifBlank { accountCache().getString("full_name", "").orEmpty() }
-        profileData.text = "Nombre: ${displayName.ifBlank { "—" }}\nEmail: ${session.email}\nVersión: ${BuildConfig.VERSION_NAME}"
+        profileData.text = "Nombre: ${displayName.ifBlank { "—" }}\nEmail: ${session.email}\nTeléfono: ${accountCache().getString("phone_e164", "").orEmpty().ifBlank { "Falta completar" }}\nVersión: ${BuildConfig.VERSION_NAME}"
         subscriptionStatus.text = when {
             isSubscriptionActiveCached() -> "Activa. CERCA está habilitada."
             daysRemaining() > 0 -> "Prueba gratuita: quedan ${daysRemaining()} día(s)."
@@ -1133,7 +1188,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_PERMISSIONS) {
+        if (requestCode == REQ_SMS_PERMISSION) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (granted) requestRemainingEmergencyPermissions() else toast("CERCA necesita permiso para enviar el SMS de emergencia.")
+        } else if (requestCode == REQ_OTHER_PERMISSIONS || requestCode == REQ_PERMISSIONS) {
             toast(if (hasEmergencyPermissions()) "Permisos listos para pedir ayuda." else "Podés habilitar los permisos desde Ajustes cuando quieras.")
         }
     }
@@ -1146,18 +1204,22 @@ class MainActivity : AppCompatActivity() {
                 "CERCA usa el teléfono para llamar al contacto que elegiste, SMS para enviar la alerta y la ubicación únicamente al activar PEDIR AYUDA para incluir un enlace puntual de Google Maps. No realiza seguimiento continuo ni lee tus mensajes."
             )
             .setNegativeButton("AHORA NO", null)
-            .setPositiveButton("CONTINUAR") { _, _ -> requestEmergencyPermissionsIfNeeded() }
+            .setPositiveButton("CONTINUAR") { _, _ -> requestSmsPermissionFirst() }
             .show()
     }
 
-    private fun requestEmergencyPermissionsIfNeeded() {
-        val missing = listOf(
-            Manifest.permission.CALL_PHONE,
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ).filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQ_PERMISSIONS)
+    private fun requestEmergencyPermissionsIfNeeded() { requestSmsPermissionFirst() }
+
+    private fun requestSmsPermissionFirst() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.SEND_SMS), REQ_SMS_PERMISSION)
+        } else requestRemainingEmergencyPermissions()
+    }
+
+    private fun requestRemainingEmergencyPermissions() {
+        val missing = listOf(Manifest.permission.CALL_PHONE, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION).filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQ_OTHER_PERMISSIONS)
+        else toast("Permisos listos para pedir ayuda.")
     }
 
     private fun hasEmergencyPermissions(): Boolean {

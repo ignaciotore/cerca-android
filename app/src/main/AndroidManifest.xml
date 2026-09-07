@@ -31,6 +31,14 @@
         <receiver android:name=".MedicationBootReceiver" android:exported="true"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>
         <activity android:name=".MasterAdminActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".EnterpriseAdminActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".PasswordResetActivity" android:exported="true" android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cerca" android:host="reset-password" />
+            </intent-filter>
+        </activity>
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity>
     </application>
 </manifest>

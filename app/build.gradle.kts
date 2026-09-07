@@ -10,9 +10,9 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 40
+        versionCode = 41
         // Validación legacy del workflow: versionCode = 9
-        versionName = "9.0.6"
+        versionName = "9.0.7"
         // Compatibilidad legacy del workflow: versionName = "7.0"
     }
     val helpKeystorePath = System.getenv("HELP_KEYSTORE_PATH")
@@ -42,39 +42,18 @@ tasks.register("stageCercaIosWorkflow") {
     }
 }
 
-tasks.register("applyCerca906Patch") {
+tasks.register("applyCerca907Patch") {
     doLast {
         val api = rootProject.file("app/src/main/java/com/help/seguridad/SupabaseApi.kt")
         if (api.exists()) {
             var s = api.readText()
             val dq = 34.toChar()
-            val dollar = 36.toChar()
-            val oldValue = "const val RESET_URL = " + dq + dollar + "WEB_BASE?page=reset" + dq
-            val newValue = "const val RESET_URL = " + dq + "cerca://reset-password" + dq
+            val oldValue = "const val RESET_URL = " + dq + "cerca://reset-password" + dq
+            val newValue = "const val RESET_URL = " + dq + "https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/cerca-reset" + dq
             s = s.replace(oldValue, newValue)
             api.writeText(s)
-        }
-        val manifest = rootProject.file("app/src/main/AndroidManifest.xml")
-        if (manifest.exists()) {
-            var m = manifest.readText()
-            if (!m.contains(".PasswordResetActivity")) {
-                val dq = 34.toChar()
-                val marker = "        <activity android:name=" + dq + ".MainActivity" + dq
-                val block = listOf(
-                    "        <activity android:name=" + dq + ".PasswordResetActivity" + dq + " android:exported=" + dq + "true" + dq + " android:screenOrientation=" + dq + "portrait" + dq + ">",
-                    "            <intent-filter>",
-                    "                <action android:name=" + dq + "android.intent.action.VIEW" + dq + " />",
-                    "                <category android:name=" + dq + "android.intent.category.DEFAULT" + dq + " />",
-                    "                <category android:name=" + dq + "android.intent.category.BROWSABLE" + dq + " />",
-                    "                <data android:scheme=" + dq + "cerca" + dq + " android:host=" + dq + "reset-password" + dq + " />",
-                    "            </intent-filter>",
-                    "        </activity>"
-                ).joinToString("\n") + "\n"
-                m = m.replace(marker, block + marker)
-                manifest.writeText(m)
-            }
         }
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn("stageCercaIosWorkflow", "applyCerca906Patch") }
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn("stageCercaIosWorkflow", "applyCerca907Patch") }

@@ -120,18 +120,20 @@ class FamilyCircleActivity : AppCompatActivity() {
         val call=prefs().getString("callPhone","").orEmpty()==c.phone
         box.addView(body("SMS activo" + (if(call) "  ·  Llamada activa" else "") + (if(has) "  ·  Alerta CERCA activa" else "")))
 
-        val medical = card().apply {
-            setBackgroundColor(Color.parseColor("#F1F7F6"))
-            addView(TextView(this@FamilyCircleActivity).apply {
-                text = "Ficha médica: " + accessLabel(c.access)
-                textSize = 14f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(Color.parseColor("#0B5960"))
-            })
-            addView(body(if(has) "CERCA compartirá la ficha según este permiso." else "Este permiso quedará preparado y se activará automáticamente si este contacto instala CERCA. La ficha no se envía por SMS."))
-            addView(secondary("CAMBIAR FICHA MÉDICA") { chooseAccess(c) })
+        if (BuildConfig.HEALTH_FEATURES) {
+            val medical = card().apply {
+                setBackgroundColor(Color.parseColor("#F1F7F6"))
+                addView(TextView(this@FamilyCircleActivity).apply {
+                    text = "Ficha médica: " + accessLabel(c.access)
+                    textSize = 14f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.parseColor("#0B5960"))
+                })
+                addView(body(if(has) "CERCA compartirá la ficha según este permiso." else "Este permiso quedará preparado y se activará automáticamente si este contacto instala CERCA. La ficha no se envía por SMS."))
+                addView(secondary("CAMBIAR FICHA MÉDICA") { chooseAccess(c) })
+            }
+            box.addView(medical, margin())
         }
-        box.addView(medical, margin())
 
         if(!call) box.addView(secondary("USAR PARA LLAMADA") { setCall(c) })
         box.addView(danger("QUITAR CONTACTO") { removeContact(c) })
@@ -187,11 +189,11 @@ class FamilyCircleActivity : AppCompatActivity() {
 
     private fun syncAndReload(){
         val s=session ?: return; val a=JSONArray(); val call=prefs().getString("callPhone","").orEmpty()
-        for(c in contacts()) a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",true).put("call_enabled",c.phone==call).put("medical_access",c.access))
+        for(c in contacts()) a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",true).put("call_enabled",c.phone==call).put("medical_access",if(BuildConfig.HEALTH_FEATURES)c.access else "never"))
         executor.execute{try{val state=api.syncNetworkContacts(s,a);runOnUiThread{serverState=state;render()}}catch(e:Exception){runOnUiThread{render();toast(e.message?:"Los contactos quedaron guardados en el teléfono y se sincronizarán cuando vuelva Internet.")}}}
     }
 
-    private fun openAlert(a:JSONObject){ startActivity(Intent(this,EmergencyAlertActivity::class.java).apply{putExtra("emergency_id",a.optString("id"));putExtra("owner_user_id",a.optString("owner_user_id"));putExtra("person_name",a.optString("person_name","Contacto CERCA"));putExtra("mode",a.optString("mode","normal"));putExtra("latitude",a.optString("latitude",""));putExtra("longitude",a.optString("longitude",""));putExtra("medical_access",a.optString("medical_access","never"))}) }
+    private fun openAlert(a:JSONObject){ startActivity(Intent(this,EmergencyAlertActivity::class.java).apply{putExtra("emergency_id",a.optString("id"));putExtra("owner_user_id",a.optString("owner_user_id"));putExtra("person_name",a.optString("person_name","Contacto CERCA"));putExtra("mode",a.optString("mode","normal"));putExtra("latitude",a.optString("latitude",""));putExtra("longitude",a.optString("longitude",""));putExtra("medical_access",if(BuildConfig.HEALTH_FEATURES)a.optString("medical_access","never") else "never")}) }
 
     private fun norm(raw:String):String{ val v=raw.trim(); return v.filterIndexed{i,ch->ch.isDigit() || (ch=='+'&&i==0)} }
     private fun card()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(17),dp(16),dp(17),dp(16));setBackgroundResource(R.drawable.card_bg)}

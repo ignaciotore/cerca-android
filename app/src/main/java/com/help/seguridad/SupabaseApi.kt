@@ -15,8 +15,8 @@ class SupabaseApi {
         const val BASE_URL = "https://yduoxeqgxolkzvjexlqk.supabase.co"
         const val PUBLISHABLE_KEY = "sb_publishable_XtjPnBnjESZwcUnUUAPybg_Y6LqivaD"
         const val WEB_BASE = "$BASE_URL/functions/v1/help-web"
-        const val PRIVACY_URL = "$WEB_BASE?page=privacy"
-        const val DELETE_ACCOUNT_URL = "$WEB_BASE?page=delete"
+        const val PRIVACY_URL = "$BASE_URL/functions/v1/cerca-privacy"
+        const val DELETE_ACCOUNT_URL = "$BASE_URL/functions/v1/cerca-delete-info"
         const val RESET_URL = "https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/cerca-reset"
         const val ADMIN_URL = "$WEB_BASE?page=admin"
     }

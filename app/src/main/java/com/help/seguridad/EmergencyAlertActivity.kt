@@ -50,7 +50,7 @@ class EmergencyAlertActivity : AppCompatActivity() {
         personName = intent.getStringExtra("person_name").orEmpty().ifBlank { "Contacto CERCA" }
         latitude = intent.getStringExtra("latitude").orEmpty()
         longitude = intent.getStringExtra("longitude").orEmpty()
-        medicalAccess = intent.getStringExtra("medical_access").orEmpty().ifBlank { "never" }
+        medicalAccess = if (BuildConfig.HEALTH_FEATURES) intent.getStringExtra("medical_access").orEmpty().ifBlank { "never" } else "never"
 
         render()
     }
@@ -63,7 +63,7 @@ class EmergencyAlertActivity : AppCompatActivity() {
         personName = newIntent.getStringExtra("person_name").orEmpty().ifBlank { "Contacto CERCA" }
         latitude = newIntent.getStringExtra("latitude").orEmpty()
         longitude = newIntent.getStringExtra("longitude").orEmpty()
-        medicalAccess = newIntent.getStringExtra("medical_access").orEmpty().ifBlank { "never" }
+        medicalAccess = if (BuildConfig.HEALTH_FEATURES) newIntent.getStringExtra("medical_access").orEmpty().ifBlank { "never" } else "never"
         render()
     }
 
@@ -113,7 +113,7 @@ class EmergencyAlertActivity : AppCompatActivity() {
             root.addView(primary("VER UBICACIÓN") { openLocation() }, topMargin())
         }
 
-        if (medicalAccess != "never" && ownerUserId.isNotBlank()) {
+        if (BuildConfig.HEALTH_FEATURES && medicalAccess != "never" && ownerUserId.isNotBlank()) {
             root.addView(secondary("VER FICHA MÉDICA") { loadMedical() }, topMargin())
         }
 

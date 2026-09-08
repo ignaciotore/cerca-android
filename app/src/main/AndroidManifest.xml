@@ -1,34 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.NFC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
-    <uses-feature android:name="android.hardware.nfc" android:required="false" />
-    <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
     <application android:name=".CercaApplication" android:icon="@drawable/ic_cerca_launcher" android:roundIcon="@drawable/ic_cerca_launcher" android:allowBackup="false" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:usesCleartextTraffic="false" android:label="CERCA" android:supportsRtl="true" android:theme="@style/Theme.Help">
         <activity android:name=".QuickAccessSettingsActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".EmergencyShortcutActivity" android:exported="false" android:excludeFromRecents="true" android:screenOrientation="portrait" />
-        <activity android:name=".MedicalProfileActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".FamilyCircleActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".EmergencyAlertActivity" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true" android:excludeFromRecents="true" android:screenOrientation="portrait" />
         <service android:name=".CercaMessagingService" android:exported="false"><intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter></service>
         <service android:name=".EmergencyLocationService" android:exported="false" android:foregroundServiceType="location" />
-        <activity android:name=".MedicationActivity" android:exported="false" android:screenOrientation="portrait" />
-        <activity android:name=".CercaIdTapActivity" android:exported="false" android:screenOrientation="portrait" android:showWhenLocked="true" android:turnScreenOn="true" android:excludeFromRecents="true" />
         <receiver android:name=".HelpWidgetProvider" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/help_widget_info" /></receiver>
-        <service android:name=".CercaNfcCardService" android:exported="true" android:permission="android.permission.BIND_NFC_SERVICE"><intent-filter><action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" /></intent-filter><meta-data android:name="android.nfc.cardemulation.host_apdu_service" android:resource="@xml/cerca_nfc_service" /></service>
-        <receiver android:name=".MedicationReminderReceiver" android:exported="false" />
-        <receiver android:name=".MedicationBootReceiver" android:exported="true"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>
         <activity android:name=".MasterAdminActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".EnterpriseAdminActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".PasswordResetActivity" android:exported="true" android:screenOrientation="portrait">

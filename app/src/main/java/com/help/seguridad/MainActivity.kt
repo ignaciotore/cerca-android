@@ -216,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         activationQueue = ActivationQueue(this)
         bindViews()
         installAccountPhoneUi()
-        installSmsMedicalOptions()
+        if (BuildConfig.HEALTH_FEATURES) installSmsMedicalOptions() else installSmsMedicalPlaceholders()
         installFamilyTestUi()
         registerSmsReceivers()
         ContextCompat.registerReceiver(
@@ -311,11 +311,22 @@ class MainActivity : AppCompatActivity() {
                     val b = AlertDialog.Builder(this)
                         .setTitle("Nueva versión de CERCA · $name")
                         .setMessage(msg)
-                        .setPositiveButton("ACTUALIZAR AHORA") { _, _ -> beginInAppUpdate(dl, name) }
+                        .setPositiveButton("ACTUALIZAR AHORA") { _, _ ->
+                            if (BuildConfig.PLAY_STORE_DISTRIBUTION) openPlayStorePage() else beginInAppUpdate(dl, name)
+                        }
                     if (!mandatory) b.setNegativeButton("MÁS TARDE", null) else b.setCancelable(false)
                     b.show()
                 }
             } catch (_: Exception) { }
+        }
+    }
+
+    private fun openPlayStorePage() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")))
+        } catch (_: Exception) {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))) }
+            catch (_: Exception) { toast("No pude abrir Google Play.") }
         }
     }
 
@@ -409,6 +420,19 @@ class MainActivity : AppCompatActivity() {
         val now = System.currentTimeMillis(); if (now - appPrefs().getLong("phone_prompt_ms", 0L) < 24L * 60L * 60L * 1000L) return
         appPrefs().edit().putLong("phone_prompt_ms", now).apply()
         AlertDialog.Builder(this).setTitle("Completá tu teléfono").setMessage("Ahora CERCA detecta automáticamente cuáles de tus contactos también usan la app. Para eso necesitamos tu número de celular.").setNegativeButton("MÁS TARDE", null).setPositiveButton("COMPLETAR") { _, _ -> showPhoneDialog() }.show()
+    }
+
+    private fun installSmsMedicalPlaceholders() {
+        sms1Medical = CheckBox(this).apply { isChecked = false }
+        sms2Medical = CheckBox(this).apply { isChecked = false }
+        sms3Medical = CheckBox(this).apply { isChecked = false }
+        sms4Medical = CheckBox(this).apply { isChecked = false }
+        contactPrefs().edit()
+            .putBoolean("sms1ShareMedical", false)
+            .putBoolean("sms2ShareMedical", false)
+            .putBoolean("sms3ShareMedical", false)
+            .putBoolean("sms4ShareMedical", false)
+            .apply()
     }
 
     private fun installSmsMedicalOptions() {
@@ -511,7 +535,14 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.profileButton).setOnClickListener { showProfile() }
         findViewById<Button>(R.id.quickAccessButton).setOnClickListener { startActivity(Intent(this, QuickAccessSettingsActivity::class.java)) }
         findViewById<Button>(R.id.editProfileButton).visibility = View.GONE
-        findViewById<Button>(R.id.medicalProfileButton).setOnClickListener { startActivity(Intent(this, MedicalProfileActivity::class.java)) }
+        findViewById<Button>(R.id.medicalProfileButton).apply {
+            if (BuildConfig.HEALTH_FEATURES) {
+                visibility = View.VISIBLE
+                setOnClickListener { startActivity(Intent(this@MainActivity, MedicalProfileActivity::class.java)) }
+            } else {
+                visibility = View.GONE
+            }
+        }
         familyHomeButton.setOnClickListener { startActivity(Intent(this, FamilyCircleActivity::class.java)) }
         findViewById<Button>(R.id.profileBackButton).setOnClickListener { routeAfterAuthentication() }
         findViewById<Button>(R.id.logoutButton).setOnClickListener { confirmLogout() }
@@ -1704,10 +1735,10 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
     private data class SmsRecipient(val name: String, val phone: String, val shareMedical: Boolean)
 
     private fun savedSmsContacts(): List<SmsRecipient> = listOf(
-        SmsRecipient(sms1Name, sms1Phone, contactPrefs().getBoolean("sms1ShareMedical", false)),
-        SmsRecipient(sms2Name, sms2Phone, contactPrefs().getBoolean("sms2ShareMedical", false)),
-        SmsRecipient(sms3Name, sms3Phone, contactPrefs().getBoolean("sms3ShareMedical", false)),
-        SmsRecipient(sms4Name, sms4Phone, contactPrefs().getBoolean("sms4ShareMedical", false))
+        SmsRecipient(sms1Name, sms1Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms1ShareMedical", false)),
+        SmsRecipient(sms2Name, sms2Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms2ShareMedical", false)),
+        SmsRecipient(sms3Name, sms3Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms3ShareMedical", false)),
+        SmsRecipient(sms4Name, sms4Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms4ShareMedical", false))
     ).filter { it.phone.isNotBlank() }.distinctBy { it.phone }
 
     @Suppress("DEPRECATION")

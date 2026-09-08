@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_PERMISSIONS = 301
         private const val REQ_SMS_PERMISSION = 303
         private const val REQ_OTHER_PERMISSIONS = 304
+        private const val REQ_CALL_PERMISSION = 305
 
         private const val ACTION_SMS_SENT = "com.help.seguridad.HELP_SMS_SENT"
         private const val ACTION_SMS_DELIVERED = "com.help.seguridad.HELP_SMS_DELIVERED"
@@ -1240,43 +1241,135 @@ class MainActivity : AppCompatActivity() {
         updateContactDisplays()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_SMS_PERMISSION) {
-            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-            if (granted) requestRemainingEmergencyPermissions() else toast("CERCA necesita permiso para enviar el SMS de emergencia.")
-        } else if (requestCode == REQ_OTHER_PERMISSIONS || requestCode == REQ_PERMISSIONS) {
-            toast(if (hasEmergencyPermissions()) "Permisos listos para pedir ayuda." else "Podés habilitar los permisos desde Ajustes cuando quieras.")
+override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    when (requestCode) {
+        REQ_SMS_PERMISSION -> {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+                continuePermissionSetup()
+            } else {
+                showPermissionSettingsDialog(
+                    "Permiso de SMS",
+                    "CERCA necesita poder enviar el SMS de emergencia a los contactos que elegiste."
+                )
+            }
+        }
+        REQ_OTHER_PERMISSIONS, REQ_PERMISSIONS -> {
+            val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            if (fine || coarse) {
+                continuePermissionSetup()
+            } else {
+                showPermissionSettingsDialog(
+                    "Permiso de ubicación",
+                    "CERCA usa tu ubicación únicamente cuando activás un SOS para incluir el punto de Google Maps en la alerta."
+                )
+            }
+        }
+        REQ_CALL_PERMISSION -> {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                finishPermissionSetup()
+            } else {
+                showPermissionSettingsDialog(
+                    "Permiso de llamadas",
+                    "CERCA necesita este permiso para iniciar automáticamente la llamada al contacto de emergencia que elegiste."
+                )
+            }
         }
     }
+}
 
-    private fun showPermissionDisclosureIfNeeded() {
-        if (hasEmergencyPermissions()) return
-        AlertDialog.Builder(this)
-            .setTitle("Permisos necesarios para pedir ayuda")
-            .setMessage(
-                "CERCA usa el teléfono para llamar al contacto que elegiste, SMS para enviar la alerta y la ubicación únicamente al activar PEDIR AYUDA para incluir un enlace puntual de Google Maps. No realiza seguimiento continuo ni lee tus mensajes."
-            )
-            .setNegativeButton("AHORA NO", null)
-            .setPositiveButton("CONTINUAR") { _, _ -> requestSmsPermissionFirst() }
-            .show()
+private fun showPermissionDisclosureIfNeeded() {
+    if (hasEmergencyPermissions()) {
+        appPrefs().edit().putBoolean("permission_setup_in_progress", false).apply()
+        return
+    }
+    AlertDialog.Builder(this)
+        .setTitle("Activá las funciones de emergencia")
+        .setMessage(
+            "CERCA te va a pedir 3 permisos, uno por uno:\n\n1. SMS · para enviar la alerta\n2. Ubicación · para compartir dónde estás al activar un SOS\n3. Llamadas · para llamar a tu contacto de emergencia\n\nSolo tenés que tocar PERMITIR en cada paso."
+        )
+        .setNegativeButton("AHORA NO", null)
+        .setPositiveButton("ACTIVAR AHORA") { _, _ ->
+            appPrefs().edit().putBoolean("permission_setup_in_progress", true).apply()
+            continuePermissionSetup()
+        }
+        .show()
+}
+
+private fun requestEmergencyPermissionsIfNeeded() {
+    appPrefs().edit().putBoolean("permission_setup_in_progress", true).apply()
+    continuePermissionSetup()
+}
+
+private fun requestSmsPermissionFirst() {
+    appPrefs().edit().putBoolean("permission_setup_in_progress", true).apply()
+    continuePermissionSetup()
+}
+
+private fun requestRemainingEmergencyPermissions() {
+    appPrefs().edit().putBoolean("permission_setup_in_progress", true).apply()
+    continuePermissionSetup()
+}
+
+private fun continuePermissionSetup() {
+    if (hasEmergencyPermissions()) {
+        finishPermissionSetup()
+        return
     }
 
-    private fun requestEmergencyPermissionsIfNeeded() { requestSmsPermissionFirst() }
-
-    private fun requestSmsPermissionFirst() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.SEND_SMS), REQ_SMS_PERMISSION)
-        } else requestRemainingEmergencyPermissions()
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.SEND_SMS), REQ_SMS_PERMISSION)
+        return
     }
 
-    private fun requestRemainingEmergencyPermissions() {
-        val missing = listOf(Manifest.permission.CALL_PHONE, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION).filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQ_OTHER_PERMISSIONS)
-        else toast("Permisos listos para pedir ayuda.")
+    val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    if (!fine && !coarse) {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            REQ_OTHER_PERMISSIONS
+        )
+        return
     }
 
-    private fun hasEmergencyPermissions(): Boolean {
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL_PERMISSION)
+        return
+    }
+
+    finishPermissionSetup()
+}
+
+private fun finishPermissionSetup() {
+    appPrefs().edit()
+        .putBoolean("permission_setup_in_progress", false)
+        .putBoolean("permission_settings_opened", false)
+        .apply()
+    toast("CERCA quedó lista para pedir ayuda.")
+}
+
+private fun showPermissionSettingsDialog(title: String, message: String) {
+    AlertDialog.Builder(this)
+        .setTitle(title)
+        .setMessage(message + "\n\nSi Android no vuelve a mostrar el botón PERMITIR, te llevo directamente a los permisos de CERCA.")
+        .setNegativeButton("MÁS TARDE") { _, _ ->
+            appPrefs().edit().putBoolean("permission_setup_in_progress", false).apply()
+        }
+        .setPositiveButton("ABRIR PERMISOS") { _, _ ->
+            appPrefs().edit()
+                .putBoolean("permission_setup_in_progress", true)
+                .putBoolean("permission_settings_opened", true)
+                .apply()
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + packageName)))
+            } catch (_: Exception) {
+                toast("No pude abrir los permisos. Entrá a Ajustes > Apps > CERCA > Permisos.")
+            }
+        }
+        .show()
+}    private fun hasEmergencyPermissions(): Boolean {
         val phone = ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
         val sms = ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED

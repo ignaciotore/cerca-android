@@ -1484,12 +1484,6 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
                 val id = emergency?.optString("id", "").orEmpty()
                 if (id.isNotBlank()) {
                     accountCache().edit().putString("active_network_emergency_id", id).apply()
-                    try {
-                        ContextCompat.startForegroundService(
-                            this,
-                            Intent(this, EmergencyLocationService::class.java).putExtra("emergency_id", id)
-                        )
-                    } catch (_: Exception) {}
                     refreshNetworkEmergencyUiAsync(fresh)
                 }
             },
@@ -1571,7 +1565,6 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
                         currentSession = fresh
                         sessionStore.save(fresh)
                         accountCache().edit().remove("active_network_emergency_id").apply()
-                        try { stopService(Intent(this, EmergencyLocationService::class.java)) } catch (_: Exception) {}
                         if (::activeEmergencyButton.isInitialized) activeEmergencyButton.visibility = View.GONE
                         toast("Emergencia finalizada.")
                     },

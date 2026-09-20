@@ -2,6 +2,10 @@ name: Generar H.E.L.P release firmado
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/release-help-play.yml"
 
 jobs:
   release:

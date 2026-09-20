@@ -446,7 +446,7 @@ class MainActivity : AppCompatActivity() {
         val anchor = findViewById<Button>(anchorId)
         val parent = anchor.parent as LinearLayout
         val box = CheckBox(this).apply {
-            text = "Enviar también mi ficha médica CERCA ID a este contacto"
+            text = "Enviar también mi información útil ante una emergencia a este contacto"
             textSize = 14f
             setTextColor(android.graphics.Color.parseColor("#34454A"))
             visibility = View.GONE
@@ -462,7 +462,7 @@ class MainActivity : AppCompatActivity() {
         box.setOnCheckedChangeListener { _, checked ->
             contactPrefs().edit().putBoolean("sms" + index + "ShareMedical", checked).apply()
             if (checked && medicalShareUrl() == null) {
-                toast("Quedó marcado. Para enviar la ficha, guardala y activá el acceso de emergencia en Ficha médica · CERCA ID.")
+                toast("Quedó marcado. Guardá primero tu información útil ante una emergencia.")
             }
         }
         return box
@@ -487,6 +487,48 @@ class MainActivity : AppCompatActivity() {
         return if (enabled && token.isNotBlank()) {
             SupabaseApi.BASE_URL + "/functions/v1/cerca-medical-card?id=" + token
         } else null
+    }
+
+    private fun showEmergencyInfoDialog() {
+        val prefs = getSharedPreferences("cerca_emergency_info", MODE_PRIVATE)
+        val input = EditText(this).apply {
+            setText(prefs.getString("free_text", "").orEmpty())
+            hint = "Escribí cualquier información que quieras tener disponible ante una emergencia"
+            minLines = 5
+            maxLines = 10
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setPadding(familyDp(12), familyDp(12), familyDp(12), familyDp(12))
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(familyDp(20), familyDp(6), familyDp(20), 0)
+            addView(TextView(this@MainActivity).apply {
+                text = "Campo libre y opcional. Se guarda únicamente en este dispositivo y vos decidís qué escribir."
+                textSize = 14f
+                setTextColor(android.graphics.Color.parseColor("#657579"))
+                setPadding(0, 0, 0, familyDp(10))
+            })
+            addView(input, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Información útil ante una emergencia")
+            .setView(container)
+            .setPositiveButton("Guardar") { _, _ ->
+                prefs.edit().putString("free_text", input.text.toString().trim()).apply()
+                toast("Información guardada en este dispositivo.")
+            }
+            .setNeutralButton("Borrar") { _, _ ->
+                prefs.edit().remove("free_text").apply()
+                toast("Información eliminada.")
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun registerSmsReceivers() {
@@ -536,12 +578,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.quickAccessButton).setOnClickListener { startActivity(Intent(this, QuickAccessSettingsActivity::class.java)) }
         findViewById<Button>(R.id.editProfileButton).visibility = View.GONE
         findViewById<Button>(R.id.medicalProfileButton).apply {
-            if (BuildConfig.HEALTH_FEATURES) {
-                visibility = View.VISIBLE
-                setOnClickListener { startActivity(Intent(this@MainActivity, MedicalProfileActivity::class.java)) }
-            } else {
-                visibility = View.GONE
-            }
+            visibility = View.VISIBLE
+            text = "INFORMACIÓN ÚTIL ANTE UNA EMERGENCIA"
+            setOnClickListener { showEmergencyInfoDialog() }
         }
         familyHomeButton.setOnClickListener { startActivity(Intent(this, FamilyCircleActivity::class.java)) }
         findViewById<Button>(R.id.profileBackButton).setOnClickListener { routeAfterAuthentication() }
@@ -1073,7 +1112,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { setFamilyTestPlanRemote("family") }
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, familyDp(7), 0, 0) })
         planTestCard.addView(TextView(this).apply {
-            text = "Individual: SOS, contactos, ficha médica y medicamentos.\n\nFamiliar: suma Mi Círculo CERCA, invitaciones y acceso autorizado a fichas médicas de la familia."
+            text = "Individual: SOS, contactos e información útil ante una emergencia.\n\nFamiliar: suma Mi Red CERCA, invitaciones y acceso autorizado a información compartida por la familia."
             textSize = 13f
             setTextColor(android.graphics.Color.parseColor("#657579"))
             setPadding(0, familyDp(10), 0, 0)

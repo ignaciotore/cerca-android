@@ -1,0 +1,6 @@
+{
+  "app": "CERCA",
+  "channel": "production",
+  "build": "2026-09-21-cloudflare",
+  "note": "Cloudflare Pages auto-deploy verification"
+}

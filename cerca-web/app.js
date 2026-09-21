@@ -336,10 +336,9 @@ function networkCollections(){
     alerts:arr(n,'incoming_alerts','alerts')
   }
 }
-function designatedCallKey(){
+function designatedCall(){
   const all=networkCollections().syncedContacts||[];
-  const call=all.find(c=>c.call_enabled===true);
-  return call?contactKey(call):'';
+  return all.find(c=>c.call_enabled===true)||null;
 }
 function syncedRoleFor(x){
   const all=networkCollections().syncedContacts||[];
@@ -348,8 +347,9 @@ function syncedRoleFor(x){
   const matches=all.filter(c=>contactKey(c)===k||(px&&phoneKey(first(c,'phone_e164','phone'))===px));
   const direct=(x.sms_enabled!==undefined||x.call_enabled!==undefined)?[x]:[];
   const pool=matches.length?matches:direct;
-  const callKey=designatedCallKey();
-  const isCall=!!callKey&&k===callKey;
+  const call=designatedCall();
+  const callPhone=phoneKey(first(call,'phone_e164','phone','target_phone','contact_phone'));
+  const isCall=!!call&&((px&&callPhone&&px===callPhone)||contactKey(call)===k);
   const hasSms=pool.some(c=>c.sms_enabled===true||c.call_enabled===true);
   return{
     call:isCall,
@@ -397,7 +397,13 @@ async function removeLink(ids){
     toast('Contacto eliminado de la red.');refreshAll();
   }catch(e){toast(e.message,'error')}
 }
-async function setMedicalAccess(id,value){try{await networkCall('set_medical_access',{link_id:id,medical_access:value});toast('Permiso actualizado.');await loadNetwork();renderBelow()}catch(e){toast(e.message,'error');refreshAll()}}
+async function setMedicalAccess(ids,value){
+  const list=String(ids||'').split(',').filter(Boolean);
+  try{
+    for(const id of list)await networkCall('set_medical_access',{link_id:id,medical_access:value});
+    toast('Permiso actualizado.');await loadNetwork();renderSide();renderBelow();
+  }catch(e){toast(e.message,'error');refreshAll()}
+}
 
 async function fetchMedical(){try{const uid=S.user.id;const d=await request('/rest/v1/medical_profiles?user_id=eq.'+encodeURIComponent(uid)+'&select=*');return Array.isArray(d)?d[0]||null:d}catch{return null}}
 async function renderInfo(el){

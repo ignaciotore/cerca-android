@@ -288,10 +288,47 @@ function startTracking(){
 function stopTracking(){if(S.watchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(S.watchId);S.watchId=null}}
 async function resolveEmergency(){const id=S.activeEmergency?.id||S.network?.active_emergency?.id;if(!id)return;try{await networkCall('emergency_resolve',{emergency_id:id});stopTracking();S.activeEmergency=null;await loadNetwork();toast('Emergencia finalizada.');renderSide();renderBelow()}catch(e){toast(e.message,'error')}}
 
+function phoneKey(v){
+  const d=String(v||'').replace(/\D/g,'');
+  if(!d)return'';
+  return d.length>=10?d.slice(-10):d.replace(/^0+/,'');
+}
+function contactKey(x){
+  const uid=first(x,'target_user_id','other_user_id','member_user_id','contact_user_id','owner_user_id');
+  if(uid)return'u:'+String(uid);
+  const p=phoneKey(first(x,'phone_e164','phone','target_phone','contact_phone'));
+  if(p)return'p:'+p;
+  const n=String(x.display_name||x.full_name||x.name||x.email||'').trim().toLowerCase();
+  return'n:'+n;
+}
+function mergeNetworkContacts(items){
+  const m=new Map();
+  for(const x of (items||[])){
+    const k=contactKey(x);
+    if(!k||k==='n:')continue;
+    const prev=m.get(k);
+    if(!prev){
+      const copy={...x,__ids:[x.id||x.link_id].filter(Boolean)};
+      m.set(k,copy);
+    }else{
+      prev.__ids=[...(prev.__ids||[]),x.id||x.link_id].filter(Boolean);
+      for(const [key,val] of Object.entries(x)){
+        if((prev[key]===undefined||prev[key]===null||prev[key]==='')&&val!==undefined&&val!==null&&val!=='')prev[key]=val;
+      }
+      if(x.call_enabled===true)prev.call_enabled=true;
+      if(x.sms_enabled===true)prev.sms_enabled=true;
+      if(x.has_cerca===true)prev.has_cerca=true;
+      const medRank={never:0,emergency:1,always:2};
+      if((medRank[x.medical_access]||0)>(medRank[prev.medical_access]||0))prev.medical_access=x.medical_access;
+    }
+  }
+  return [...m.values()];
+}
 function networkCollections(){
   const n=S.network||{};
-  const synced=arr(n,'contacts','outgoing');
-  const linked=arr(n,'links','network_links','members');
+  const synced=mergeNetworkContacts(arr(n,'contacts','outgoing'));
+  const linkedRaw=arr(n,'links','network_links','members');
+  const linked=mergeNetworkContacts(linkedRaw);
   return{
     links:linked.length?linked:synced,
     syncedContacts:synced,
@@ -299,28 +336,32 @@ function networkCollections(){
     alerts:arr(n,'incoming_alerts','alerts')
   }
 }
-function normNetPhone(v){return String(v||'').replace(/\D/g,'')}
+function designatedCallKey(){
+  const all=networkCollections().syncedContacts||[];
+  const call=all.find(c=>c.call_enabled===true);
+  return call?contactKey(call):'';
+}
 function syncedRoleFor(x){
   const all=networkCollections().syncedContacts||[];
-  const px=normNetPhone(first(x,'phone_e164','phone','target_phone','contact_phone'));
-  const nx=String(x.display_name||x.full_name||x.name||'').trim().toLowerCase();
-  const direct=(x.sms_enabled!==undefined||x.call_enabled!==undefined)?x:null;
-  const match=direct||all.find(c=>{
-    const pc=normNetPhone(first(c,'phone_e164','phone'));
-    const nc=String(c.name||c.display_name||'').trim().toLowerCase();
-    return (px&&pc&&px===pc)||(!px&&nx&&nc===nx);
-  });
+  const k=contactKey(x);
+  const px=phoneKey(first(x,'phone_e164','phone','target_phone','contact_phone'));
+  const matches=all.filter(c=>contactKey(c)===k||(px&&phoneKey(first(c,'phone_e164','phone'))===px));
+  const direct=(x.sms_enabled!==undefined||x.call_enabled!==undefined)?[x]:[];
+  const pool=matches.length?matches:direct;
+  const callKey=designatedCallKey();
+  const isCall=!!callKey&&k===callKey;
+  const hasSms=pool.some(c=>c.sms_enabled===true||c.call_enabled===true);
   return{
-    sms:match?.sms_enabled===true,
-    call:match?.call_enabled===true,
-    cerca:match?.has_cerca===true||!!(x.id||x.link_id||x.owner_user_id||x.target_user_id)
+    call:isCall,
+    sms:!isCall&&hasSms,
+    cerca:pool.some(c=>c.has_cerca===true)||!!(x.id||x.link_id||x.owner_user_id||x.target_user_id)
   }
 }
 function roleBadges(x){
   const r=syncedRoleFor(x),out=[];
-  if(r.call)out.push('<span class="contactRole call">📞 Llamada</span>');
-  if(r.sms)out.push('<span class="contactRole sms">✉️ SMS</span>');
-  if(r.cerca||(!r.call&&!r.sms))out.push('<span class="contactRole cerca">🔔 Alerta CERCA</span>');
+  if(r.call)out.push('<span class="contactRole call">📞 Contacto de llamada</span>');
+  else if(r.sms)out.push('<span class="contactRole sms">✉️ Contacto SMS</span>');
+  if(r.cerca)out.push('<span class="contactRole cerca">🔔 Alerta CERCA</span>');
   return '<div class="contactRoles">'+out.join('')+'</div>';
 }
 function renderNetwork(el){
@@ -337,7 +378,8 @@ function renderNetwork(el){
 }
 
 function linkCard(x){
-  const id=x.id||x.link_id||'';
+  const ids=(x.__ids&&x.__ids.length?x.__ids:[x.id||x.link_id]).filter(Boolean);
+  const id=ids.join(',');
   const n=x.display_name||x.full_name||x.name||x.email||'Contacto CERCA';
   const rel=x.relationship||x.relation||'Red CERCA';
   const med=x.medical_access||'never';
@@ -347,7 +389,14 @@ function linkCard(x){
 
 function newInviteModal(){const w=modal('<h2>Invitar a Mi Red CERCA</h2><p>Generá una invitación para una persona de confianza.</p><label>Nombre</label><input id="invName" class="field"><label>Relación</label><input id="invRel" class="field" placeholder="Ej: hermana, amigo, pareja"><label>Información útil ante una emergencia</label><select id="invMed" class="select"><option value="never">No compartir</option><option value="emergency">Solo durante una emergencia</option><option value="always">Siempre autorizada</option></select><button id="makeInvite" class="btn primary block" style="margin-top:16px">Generar invitación</button>');$('makeInvite').onclick=async()=>{try{const d=await networkCall('create_invite',{display_name:$('invName').value.trim(),relationship:$('invRel').value.trim(),medical_access:$('invMed').value});const code=d.code||d.invite_code||d.invitation?.code||'';w.innerHTML='<div class="modal"><h2>Invitación creada</h2><p>Compartí este código con la persona:</p><div class="countdown" style="font-size:44px;color:var(--teal)">'+esc(code||'Creada')+'</div><button id="closeInvite" class="btn primary block">Listo</button></div>';$('closeInvite').onclick=()=>{w.remove();refreshAll()}}catch(e){toast(e.message,'error')}}}
 function acceptInviteModal(){const w=modal('<h2>Unirme a una Red CERCA</h2><p>Ingresá el código que te compartieron.</p><input id="inviteCode" class="field" style="text-transform:uppercase" placeholder="CÓDIGO"><button id="acceptCode" class="btn primary block" style="margin-top:14px">Aceptar invitación</button>');$('acceptCode').onclick=async()=>{try{await networkCall('accept_code',{code:$('inviteCode').value.trim().toUpperCase()});w.remove();toast('Ya sos parte de esa Red CERCA.');refreshAll()}catch(e){toast(e.message,'error')}}}
-async function removeLink(id){if(!confirm('¿Quitar a esta persona de tu Red CERCA?'))return;try{await networkCall('remove_link',{link_id:id});toast('Contacto eliminado de la red.');refreshAll()}catch(e){toast(e.message,'error')}}
+async function removeLink(ids){
+  if(!confirm('¿Quitar a esta persona de tu Red CERCA?'))return;
+  const list=String(ids||'').split(',').filter(Boolean);
+  try{
+    for(const id of list)await networkCall('remove_link',{link_id:id});
+    toast('Contacto eliminado de la red.');refreshAll();
+  }catch(e){toast(e.message,'error')}
+}
 async function setMedicalAccess(id,value){try{await networkCall('set_medical_access',{link_id:id,medical_access:value});toast('Permiso actualizado.');await loadNetwork();renderBelow()}catch(e){toast(e.message,'error');refreshAll()}}
 
 async function fetchMedical(){try{const uid=S.user.id;const d=await request('/rest/v1/medical_profiles?user_id=eq.'+encodeURIComponent(uid)+'&select=*');return Array.isArray(d)?d[0]||null:d}catch{return null}}

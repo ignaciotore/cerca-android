@@ -1,4 +1,4 @@
-const CACHE='cerca-web-v3';
+const CACHE='cerca-web-v4';
 const STATIC=['/','/index.html','/styles.css','/app.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
 
 self.addEventListener('install',e=>{

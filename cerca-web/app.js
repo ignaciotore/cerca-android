@@ -96,19 +96,73 @@ async function networkCall(action,body=null,method='POST'){const q='?action='+en
 async function loadNetwork(){try{S.network=await networkCall('state',null,'GET');S.activeEmergency=S.network?.active_emergency||null;return S.network}catch(e){console.warn(e);return null}}
 
 function renderDashboard(){
+  destroyMap();
   const name=S.profile?.full_name||S.user?.user_metadata?.full_name||S.user?.email?.split('@')[0]||'';
-  const org=S.enterprise?.organization;const orgLine=S.enterprise?.enterprise&&org?'<div class="infoNote" style="margin-bottom:12px"><strong>'+esc(org.name)+'</strong> · '+(S.enterprise.role==='admin'?'Administrador':'CERCA Empresas')+'</div>':'';
-  app.innerHTML='<div class="dash"><section class="card panel"><div class="hello"><div><h1>Hola, '+esc(name)+'</h1><p>Tu Red CERCA está lista para acompañarte.</p></div><button id="profileBtn" class="btn light sm">Mi cuenta</button></div>'+orgLine+'<nav class="nav"><button data-tab="home" class="active">Inicio</button><button data-tab="network">Mi Red</button><button data-tab="info">Información útil</button><button data-tab="alerts">Alertas</button><button data-tab="enterprise">Empresa</button></nav><div id="sideContent"></div></section><section class="card mapCard"><div class="mapHeader"><div><strong id="mapTitle">Tu ubicación</strong><div id="mapMeta" class="mapMeta">Todavía no compartís ubicación.</div></div><span id="liveBadge" class="badge">En espera</span></div><div id="map"></div><div class="mapFooter"><span id="mapFooterText" class="mapMeta">El mapa se activa al pedir ayuda o abrir una alerta.</span><div class="actions"><button id="centerMapBtn" class="btn light sm">Centrar</button><a id="mapsLink" class="btn light sm hidden" target="_blank" rel="noopener">Abrir mapa</a></div></div></section><section class="card panel" style="grid-column:1/-1"><div id="belowContent"></div></section></div>';
+  const org=S.enterprise?.organization;
+  const orgLine=S.enterprise?.enterprise&&org?'<div class="infoNote" style="margin-bottom:12px"><strong>'+esc(org.name)+'</strong> · '+(S.enterprise.role==='admin'?'Administrador':'CERCA Empresas')+'</div>':'';
+  app.innerHTML='<div class="dash"><section class="card panel"><div class="hello"><div><h1>Hola, '+esc(name)+'</h1><p>Tu Red CERCA está lista para acompañarte.</p></div><button id="profileBtn" class="btn light sm">Mi cuenta</button></div>'+orgLine+'<nav class="nav"><button data-tab="home" class="active">Inicio</button><button data-tab="network">Mi Red</button><button data-tab="info">Información útil</button><button data-tab="alerts">Alertas</button><button data-tab="enterprise">Empresa</button></nav><div id="sideContent"></div></section><section class="card panel"><div id="belowContent"></div></section><section id="alertMapCard" class="card mapCard alertMapCard hidden"><div class="mapHeader"><div><strong id="mapTitle">Alerta CERCA</strong><div id="mapMeta" class="mapMeta">Esperando ubicación…</div></div><span id="liveBadge" class="badge red">SOS ACTIVO</span></div><div id="map"></div><div class="mapFooter"><span id="mapFooterText" class="mapMeta">Seguimiento de la persona que activó la alerta.</span><div class="actions"><button id="centerMapBtn" class="btn light sm">Centrar</button><a id="mapsLink" class="btn light sm hidden" target="_blank" rel="noopener">Abrir en Maps</a><button id="hideMapBtn" class="btn light sm">Ocultar mapa</button></div></div></section></div>';
   document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));renderSide()});
   $('profileBtn').onclick=()=>{S.tab='profile';document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));renderSide()};
   $('centerMapBtn').onclick=centerMap;
-  initMap();renderSide();renderBelow();startPolling();
+  $('hideMapBtn').onclick=hideAlertMap;
+  renderSide();renderBelow();startPolling();
 }
-function initMap(){if(S.map)return;S.map=L.map('map',{zoomControl:true}).setView([-34.60,-58.44],11);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(S.map);setTimeout(()=>S.map.invalidateSize(),100)}
-function setMapPoint(lat,lon,opt={}){if(!Number.isFinite(+lat)||!Number.isFinite(+lon)||!S.map)return;const p=[+lat,+lon];if(!S.marker)S.marker=L.marker(p).addTo(S.map);else S.marker.setLatLng(p);if(opt.trail){S.trailPoints.push(p);if(S.trailPoints.length>120)S.trailPoints.shift();if(S.trail)S.trail.setLatLngs(S.trailPoints);else S.trail=L.polyline(S.trailPoints,{weight:5,opacity:.6}).addTo(S.map)}if(opt.center!==false)S.map.setView(p,opt.zoom||16);$('mapsLink').href='https://maps.google.com/?q='+p[0]+','+p[1];$('mapsLink').classList.remove('hidden')}
-function centerMap(){if(S.marker)S.map.setView(S.marker.getLatLng(),16)}
-function clearMapTrail(){S.trailPoints=[];if(S.trail){S.map.removeLayer(S.trail);S.trail=null}}
-
+function destroyMap(){
+  if(S.map){try{S.map.remove()}catch{}}
+  S.map=null;S.marker=null;S.trail=null;S.trailPoints=[];
+}
+function initMap(){
+  const el=$('map');if(!el)return;
+  if(S.map){setTimeout(()=>S.map.invalidateSize(),50);return}
+  S.map=L.map('map',{zoomControl:true,attributionControl:true}).setView([-34.60,-58.44],13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(S.map);
+  setTimeout(()=>S.map?.invalidateSize(),120);
+}
+function alertMarkerIcon(){
+  return L.divIcon({className:'cercaMapPinWrap',html:'<div class="cercaMapPin"><span></span></div>',iconSize:[34,42],iconAnchor:[17,39]});
+}
+function setMapPoint(lat,lon,opt={}){
+  if(!Number.isFinite(+lat)||!Number.isFinite(+lon))return;
+  initMap();if(!S.map)return;
+  const p=[+lat,+lon];
+  if(!S.marker)S.marker=L.marker(p,{icon:alertMarkerIcon()}).addTo(S.map);else S.marker.setLatLng(p);
+  if(opt.trail){
+    const last=S.trailPoints[S.trailPoints.length-1];
+    if(!last||Math.abs(last[0]-p[0])>0.000001||Math.abs(last[1]-p[1])>0.000001)S.trailPoints.push(p);
+    if(S.trailPoints.length>120)S.trailPoints.shift();
+    const routeColor=getComputedStyle(document.documentElement).getPropertyValue('--teal').trim()||'#0b666d';
+    if(S.trail)S.trail.setLatLngs(S.trailPoints);else S.trail=L.polyline(S.trailPoints,{color:routeColor,weight:5,opacity:.78,lineCap:'round',lineJoin:'round'}).addTo(S.map);
+  }
+  if(opt.center!==false)S.map.setView(p,opt.zoom||16);
+  const link=$('mapsLink');if(link){link.href='https://maps.google.com/?q='+p[0]+','+p[1];link.classList.remove('hidden')}
+}
+function centerMap(){if(S.map&&S.marker)S.map.setView(S.marker.getLatLng(),16)}
+function clearMapTrail(){
+  S.trailPoints=[];
+  if(S.trail&&S.map){try{S.map.removeLayer(S.trail)}catch{}}
+  S.trail=null;
+}
+function showAlertMap(a,{resetTrail=false,center=true}={}){
+  if(!a)return;
+  const card=$('alertMapCard');if(!card)return;
+  card.classList.remove('hidden');
+  initMap();
+  const name=a.person_name||a.full_name||'Contacto CERCA';
+  $('mapTitle').textContent='🚨 '+name+' necesita ayuda';
+  $('liveBadge').textContent='SOS ACTIVO';$('liveBadge').className='badge red';
+  $('mapFooterText').textContent='La ubicación se actualiza mientras la emergencia siga activa.';
+  if(resetTrail)clearMapTrail();
+  const lat=+first(a,'latitude','lat'),lon=+first(a,'longitude','lon','lng');
+  if(Number.isFinite(lat)&&Number.isFinite(lon)){
+    setMapPoint(lat,lon,{center,trail:true});
+    $('mapMeta').textContent='Ubicación actualizada · '+new Date().toLocaleTimeString('es-AR');
+  }else{
+    $('mapMeta').textContent='Esperando la ubicación del contacto…';
+  }
+  setTimeout(()=>S.map?.invalidateSize(),80);
+  if(center)card.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function hideAlertMap(){const card=$('alertMapCard');if(card)card.classList.add('hidden')}
 function renderSide(){
   const el=$('sideContent');if(!el)return;
   if(S.tab==='home')return renderHome(el);
@@ -132,11 +186,26 @@ function confirmSOS(silent){
 function getPos(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej(new Error('Este dispositivo no ofrece ubicación.'));navigator.geolocation.getCurrentPosition(p=>res(p.coords),e=>rej(new Error(e.code===1?'Necesito permiso de ubicación para activar CERCA.':'No pude obtener tu ubicación.')),{enableHighAccuracy:true,timeout:15000,maximumAge:10000})})}
 async function startEmergency(silent){
   setPill('Activando SOS…');
-  try{const c=await getPos();const d=await networkCall('emergency_start',{mode:silent?'silent':'normal',latitude:c.latitude,longitude:c.longitude});S.activeEmergency=d.emergency||d.active_emergency||d;clearMapTrail();setMapPoint(c.latitude,c.longitude,{trail:true});$('mapTitle').textContent='Tu ubicación en vivo';$('mapMeta').textContent='SOS activado · precisión aprox. '+Math.round(c.accuracy||0)+' m';$('liveBadge').textContent='EN VIVO';$('liveBadge').className='badge';$('mapFooterText').textContent='CERCA actualiza tu posición a medida que el teléfono informa cambios.';startTracking();toast('SOS activado. Tu Red CERCA fue alertada.');await loadNetwork();renderSide();renderBelow()}catch(e){toast(e.message,'error')}finally{setPill('CERCA activa')}
+  try{
+    const c=await getPos();
+    const d=await networkCall('emergency_start',{mode:silent?'silent':'normal',latitude:c.latitude,longitude:c.longitude});
+    S.activeEmergency=d.emergency||d.active_emergency||d;
+    startTracking();
+    toast('SOS activado. Tu Red CERCA fue alertada.');
+    await loadNetwork();renderSide();renderBelow();
+  }catch(e){toast(e.message,'error')}finally{setPill('CERCA activa')}
 }
-function startTracking(){stopTracking();if(!navigator.geolocation)return;let last=0;S.watchId=navigator.geolocation.watchPosition(async p=>{const now=Date.now();const c=p.coords;setMapPoint(c.latitude,c.longitude,{trail:true,center:false});$('mapMeta').textContent='Actualizada '+new Date().toLocaleTimeString('es-AR')+' · precisión '+Math.round(c.accuracy||0)+' m';if(now-last<4000)return;last=now;const id=S.activeEmergency?.id||S.network?.active_emergency?.id;if(!id)return;try{await networkCall('emergency_update',{emergency_id:id,latitude:c.latitude,longitude:c.longitude})}catch{}},e=>{$('mapMeta').textContent='Ubicación pausada: '+(e.message||'sin señal')},{enableHighAccuracy:true,maximumAge:2500,timeout:12000})}
+function startTracking(){
+  stopTracking();if(!navigator.geolocation)return;let last=0;
+  S.watchId=navigator.geolocation.watchPosition(async p=>{
+    const now=Date.now(),c=p.coords;
+    if(now-last<4000)return;last=now;
+    const id=S.activeEmergency?.id||S.network?.active_emergency?.id;if(!id)return;
+    try{await networkCall('emergency_update',{emergency_id:id,latitude:c.latitude,longitude:c.longitude})}catch{}
+  },()=>{},{enableHighAccuracy:true,maximumAge:2500,timeout:12000})
+}
 function stopTracking(){if(S.watchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(S.watchId);S.watchId=null}}
-async function resolveEmergency(){const id=S.activeEmergency?.id||S.network?.active_emergency?.id;if(!id)return;try{await networkCall('emergency_resolve',{emergency_id:id});stopTracking();S.activeEmergency=null;await loadNetwork();toast('Emergencia finalizada.');$('liveBadge').textContent='Finalizada';$('mapMeta').textContent='El seguimiento se detuvo.';renderSide();renderBelow()}catch(e){toast(e.message,'error')}}
+async function resolveEmergency(){const id=S.activeEmergency?.id||S.network?.active_emergency?.id;if(!id)return;try{await networkCall('emergency_resolve',{emergency_id:id});stopTracking();S.activeEmergency=null;await loadNetwork();toast('Emergencia finalizada.');renderSide();renderBelow()}catch(e){toast(e.message,'error')}}
 
 function networkCollections(){const n=S.network||{};return{links:arr(n,'links','network_links','members','contacts'),invites:arr(n,'invitations','pending_invites','invites'),alerts:arr(n,'incoming_alerts','alerts')}}
 function renderNetwork(el){
@@ -170,8 +239,22 @@ function renderAlerts(el){
 
 function alertCard(a){const id=a.id||a.emergency_id||'';const name=a.person_name||a.full_name||'Contacto CERCA';const lat=first(a,'latitude','lat'),lon=first(a,'longitude','lon','lng'),med=a.medical_access||'never';return'<div class="item"><div class="itemTop"><div><h3>🚨 '+esc(name)+' necesita ayuda</h3><p>'+(lat!=null&&lon!=null?'Ubicación disponible y actualizable.':'Esperando ubicación…')+'</p></div><span class="badge red">SOS ACTIVO</span></div><div class="itemActions"><button class="btn danger sm" data-alert="'+esc(id)+'">Ver emergencia</button>'+(med!=='never'&&a.owner_user_id?'<button class="btn light sm" data-alert-info="'+esc(id)+'">Información útil</button>':'')+'</div></div>'}
 
-async function openAlert(id){await loadNetwork();const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id))||networkCollections().alerts[0];if(!a)return toast('La alerta ya no está activa.');S.currentAlert=a;try{await networkCall('emergency_seen',{emergency_id:a.id||a.emergency_id})}catch{}const lat=+first(a,'latitude','lat'),lon=+first(a,'longitude','lon','lng');const name=a.person_name||a.full_name||'Contacto CERCA';$('mapTitle').textContent='🚨 '+name+' necesita ayuda';$('mapMeta').textContent='Ubicación de la alerta · actualizada '+new Date().toLocaleTimeString('es-AR');$('liveBadge').textContent='SOS ACTIVO';$('liveBadge').className='badge red';$('mapFooterText').textContent='La posición se actualiza mientras la emergencia siga activa y el teléfono emisor pueda reportarla.';clearMapTrail();if(Number.isFinite(lat)&&Number.isFinite(lon))setMapPoint(lat,lon,{center:true});toast('Marcaste la alerta como vista.')}
-function syncCurrentAlertFromState(){if(!S.currentAlert)return;const id=S.currentAlert.id||S.currentAlert.emergency_id;const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id));if(!a)return;S.currentAlert=a;const lat=+first(a,'latitude','lat'),lon=+first(a,'longitude','lon','lng');if(Number.isFinite(lat)&&Number.isFinite(lon)){setMapPoint(lat,lon,{center:false});$('mapMeta').textContent='Actualizada '+new Date().toLocaleTimeString('es-AR')}}
+async function openAlert(id){
+  await loadNetwork();
+  const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id))||networkCollections().alerts[0];
+  if(!a)return toast('La alerta ya no está activa.');
+  const previousId=S.currentAlert&&(S.currentAlert.id||S.currentAlert.emergency_id);
+  S.currentAlert=a;
+  try{await networkCall('emergency_seen',{emergency_id:a.id||a.emergency_id})}catch{}
+  showAlertMap(a,{resetTrail:String(previousId||'')!==String(a.id||a.emergency_id),center:true});
+}
+function syncCurrentAlertFromState(){
+  if(!S.currentAlert)return;
+  const id=S.currentAlert.id||S.currentAlert.emergency_id;
+  const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id));
+  if(!a){S.currentAlert=null;hideAlertMap();clearMapTrail();return}
+  S.currentAlert=a;showAlertMap(a,{center:false});
+}
 async function openAlertInfo(id){
   await loadNetwork();
   const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id));
@@ -229,7 +312,7 @@ function renderBelow(){
 }
 async function refreshAll(){await loadNetwork();renderSide();renderBelow();syncCurrentAlertFromState()}
 function stopPolling(){if(S.poll){clearInterval(S.poll);S.poll=null}}
-function startPolling(){stopPolling();S.poll=setInterval(async()=>{const prev=S.lastIncomingId;await loadNetwork();const alerts=networkCollections().alerts;const firstId=String(alerts[0]?.id||alerts[0]?.emergency_id||'');if(firstId&&firstId!==prev){S.lastIncomingId=firstId;if(Notification.permission==='granted'&&document.visibilityState!=='visible'){try{const reg=await navigator.serviceWorker?.ready;await reg?.showNotification('🚨 Alerta CERCA',{body:(alerts[0]?.person_name||'Una persona de tu Red CERCA')+' necesita ayuda.',icon:'/icon.svg',tag:firstId,data:{emergency_id:firstId}})}catch{}}if(S.tab==='alerts')renderSide()}syncCurrentAlertFromState();renderBelow()},6000)}
+function startPolling(){stopPolling();S.poll=setInterval(async()=>{const prev=S.lastIncomingId;await loadNetwork();const alerts=networkCollections().alerts;const firstId=String(alerts[0]?.id||alerts[0]?.emergency_id||'');if(firstId&&firstId!==prev){S.lastIncomingId=firstId;if(Notification.permission==='granted'&&document.visibilityState!=='visible'){try{const reg=await navigator.serviceWorker?.ready;await reg?.showNotification('🚨 Alerta CERCA',{body:(alerts[0]?.person_name||'Una persona de tu Red CERCA')+' necesita ayuda.',icon:'/icon.svg',tag:firstId,data:{emergency_id:firstId}})}catch{}}if(S.tab==='alerts')renderSide();if(document.visibilityState==='visible')openAlert(firstId)}syncCurrentAlertFromState();renderBelow()},6000)}
 navigator.serviceWorker?.addEventListener?.('message',e=>{if(e.data?.type==='open-alert'&&e.data.id)openAlert(e.data.id)});
 
 async function boot(){
@@ -243,7 +326,9 @@ async function boot(){
   if(S.profile?.phone_e164){try{await networkCall('set_phone',{phone:S.profile.phone_e164})}catch{}}
   applyEnterpriseBrand();
   renderDashboard();
-  if(S.activeEmergency){startTracking();const lat=+first(S.activeEmergency,'latitude','lat'),lon=+first(S.activeEmergency,'longitude','lon','lng');if(Number.isFinite(lat)&&Number.isFinite(lon))setMapPoint(lat,lon,{trail:true});$('mapTitle').textContent='Tu ubicación en vivo';$('liveBadge').textContent='EN VIVO'}
+  if(S.activeEmergency)startTracking();
+  const alerts=networkCollections().alerts;
+  S.lastIncomingId=String(alerts[0]?.id||alerts[0]?.emergency_id||'');
   const alertParam=new URLSearchParams(location.search).get('alert');if(alertParam)openAlert(alertParam);
   setPill('CERCA activa');
 }

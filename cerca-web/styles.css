@@ -47,3 +47,15 @@
 
 .networkAddActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 @media(max-width:600px){.networkAddActions{width:100%;justify-content:flex-start}.networkAddActions .btn{flex:1}}
+
+/* Inicio enfocado en SOS */
+.dash{grid-template-columns:1fr}
+.mainPanel{width:100%}
+.sosZone{padding:30px 22px 26px}
+.sosButton{width:250px;height:250px;border-width:14px;font-size:36px;box-shadow:0 22px 55px rgba(216,77,77,.32),0 0 0 1px #f1d8d5}
+.sosHint{font-size:14px;max-width:430px;margin:17px auto 0}
+@media(max-width:600px){
+  .sosZone{padding:28px 12px 24px;margin-top:4px}
+  .sosButton{width:240px;height:240px;font-size:34px;border-width:14px}
+  .sosHint{font-size:14px;padding:0 10px}
+}

@@ -784,6 +784,7 @@ class MainActivity : AppCompatActivity() {
                     contactPrefs().edit().putString("display_name", profile.fullName).apply()
                 }
                 loadContactState()
+                syncContactsFromServerAsync(fresh)
                 syncActivationsAsync(fresh)
                 // No mostramos la interfaz individual antes de resolver empresa/rol.
                 // El loading permanece visible hasta aplicar la marca empresarial y el rol maestro.
@@ -817,6 +818,7 @@ class MainActivity : AppCompatActivity() {
                 currentSession = fresh
                 sessionStore.save(fresh)
                 cacheProfile(profile, entitlement)
+                syncContactsFromServerAsync(fresh)
                 syncActivationsAsync(fresh)
                 if (homePanel.visibility == View.VISIBLE) showHome()
                 if (profilePanel.visibility == View.VISIBLE) showProfile()
@@ -866,6 +868,87 @@ class MainActivity : AppCompatActivity() {
                 (old.getString("sms1Phone", "") ?: "").isNotBlank())
         }
         editor.putBoolean("legacy_migration_done", true).apply()
+    }
+
+    private fun applyServerContactsToPrefs(state: org.json.JSONObject) {
+        val arr = state.optJSONArray("contacts") ?: state.optJSONArray("outgoing") ?: return
+        if (arr.length() == 0) return
+        val p = contactPrefs()
+        val oldShare = mutableMapOf<String, Boolean>()
+        for (i in 1..4) {
+            val oldPhone = p.getString("sms" + i + "Phone", "").orEmpty()
+            val key = phoneKey(oldPhone)
+            if (key.isNotBlank()) oldShare[key] = p.getBoolean("sms" + i + "ShareMedical", false)
+        }
+        val rows = mutableListOf<org.json.JSONObject>()
+        val seen = mutableSetOf<String>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val phone = o.optString("phone_e164").ifBlank { o.optString("phone") }
+            val key = phoneKey(phone)
+            if (key.isBlank() || !seen.add(key)) continue
+            rows += o
+            if (rows.size >= 4) break
+        }
+        if (rows.isEmpty()) return
+        val e = p.edit()
+        for (i in 1..4) {
+            e.putString("sms" + i + "Name", "")
+                .putString("sms" + i + "Phone", "")
+                .putString("sms" + i + "MedicalAccess", "never")
+                .putBoolean("sms" + i + "ShareMedical", false)
+        }
+        var serverCallName = ""
+        var serverCallPhone = ""
+        rows.forEachIndexed { index, o ->
+            val slot = index + 1
+            val phone = o.optString("phone_e164").ifBlank { o.optString("phone") }
+            val name = o.optString("name").ifBlank {
+                o.optString("display_name").ifBlank { "Contacto" }
+            }
+            val access = o.optString("medical_access", "never").ifBlank { "never" }
+            e.putString("sms" + slot + "Name", name)
+                .putString("sms" + slot + "Phone", phone)
+                .putString("sms" + slot + "MedicalAccess", access)
+                .putBoolean("sms" + slot + "ShareMedical", oldShare[phoneKey(phone)] ?: false)
+            if (o.optBoolean("call_enabled", false) && serverCallPhone.isBlank()) {
+                serverCallName = name
+                serverCallPhone = phone
+            }
+        }
+        if (serverCallPhone.isBlank()) {
+            val oldCallKey = phoneKey(p.getString("callPhone", "").orEmpty())
+            val oldMatch = rows.firstOrNull {
+                phoneKey(it.optString("phone_e164").ifBlank { it.optString("phone") }) == oldCallKey
+            }
+            val chosen = oldMatch ?: rows.first()
+            serverCallPhone = chosen.optString("phone_e164").ifBlank { chosen.optString("phone") }
+            serverCallName = chosen.optString("name").ifBlank {
+                chosen.optString("display_name").ifBlank { "Contacto de llamada" }
+            }
+        }
+        e.putString("callName", serverCallName)
+            .putString("callPhone", serverCallPhone)
+            .putBoolean("configured", serverCallPhone.isNotBlank())
+            .apply()
+    }
+
+    private fun syncContactsFromServerAsync(session: SupabaseApi.Session) {
+        runAsync(
+            work = {
+                val fresh = ensureFreshSessionBlocking(session)
+                Pair(fresh, api.fetchNetworkState(fresh))
+            },
+            success = { (fresh, state) ->
+                currentSession = fresh
+                sessionStore.save(fresh)
+                applyServerContactsToPrefs(state)
+                loadContactState()
+                if (homePanel.visibility == View.VISIBLE) showHome()
+                if (profilePanel.visibility == View.VISIBLE) showProfile()
+            },
+            failure = { /* Los contactos locales siguen disponibles sin Internet. */ }
+        )
     }
 
     private fun loadContactState() {

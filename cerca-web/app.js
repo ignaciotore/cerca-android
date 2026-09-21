@@ -1,5 +1,5 @@
 const CFG={
-  base:'https://yduoxeqgxolkzvjexlqk.supabase.co',
+  base:location.origin+'/api',
   key:'sb_publishable_XtjPnBnjESZwcUnUUAPybg_Y6LqivaD',
   network:'/functions/v1/cerca-network-v2'
 };

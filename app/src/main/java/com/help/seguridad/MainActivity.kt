@@ -1772,12 +1772,16 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
 
     private data class SmsRecipient(val name: String, val phone: String, val shareMedical: Boolean)
 
-    private fun savedSmsContacts(): List<SmsRecipient> = listOf(
-        SmsRecipient(sms1Name, sms1Phone, contactPrefs().getBoolean("sms1ShareMedical", false)),
-        SmsRecipient(sms2Name, sms2Phone, contactPrefs().getBoolean("sms2ShareMedical", false)),
-        SmsRecipient(sms3Name, sms3Phone, contactPrefs().getBoolean("sms3ShareMedical", false)),
-        SmsRecipient(sms4Name, sms4Phone, contactPrefs().getBoolean("sms4ShareMedical", false))
-    ).filter { it.phone.isNotBlank() }.distinctBy { it.phone }
+    private fun savedSmsContacts(): List<SmsRecipient> {
+        val callKey = phoneKey(callPhone)
+        return listOf(
+            SmsRecipient(sms1Name, sms1Phone, contactPrefs().getBoolean("sms1ShareMedical", false)),
+            SmsRecipient(sms2Name, sms2Phone, contactPrefs().getBoolean("sms2ShareMedical", false)),
+            SmsRecipient(sms3Name, sms3Phone, contactPrefs().getBoolean("sms3ShareMedical", false)),
+            SmsRecipient(sms4Name, sms4Phone, contactPrefs().getBoolean("sms4ShareMedical", false))
+        ).filter { it.phone.isNotBlank() && (callKey.isBlank() || phoneKey(it.phone) != callKey) }
+            .distinctBy { phoneKey(it.phone) }
+    }
 
     @Suppress("DEPRECATION")
     private fun smsManagerForDefaultSim(): SmsManager? {
@@ -1898,6 +1902,12 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
         callPhoneManual.setText(callPhone)
         updateContactDisplays()
         toast("Datos ficticios cargados para preparar capturas.")
+    }
+
+    private fun phoneKey(raw: String): String {
+        val digits = raw.filter { it.isDigit() }
+        if (digits.isBlank()) return ""
+        return if (digits.length >= 10) digits.takeLast(10) else digits.trimStart('0')
     }
 
     private fun normalizePhone(raw: String): String {

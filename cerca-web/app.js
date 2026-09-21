@@ -88,9 +88,24 @@ function planLabel(){
   return'Free';
 }
 function applyEnterpriseBrand(){
-  const org=S.enterprise?.organization;if(!S.enterprise?.enterprise||!org)return;
-  if(/^#[0-9a-f]{6}$/i.test(org.primary_color||''))document.documentElement.style.setProperty('--teal',org.primary_color);
-  if(/^#[0-9a-f]{6}$/i.test(org.secondary_color||''))document.documentElement.style.setProperty('--mint',org.secondary_color);
+  const org=S.enterprise?.organization;
+  if(!S.enterprise?.enterprise||!org)return;
+  const primary=org.primary_color||org.primaryColor||'';
+  const secondary=org.secondary_color||org.secondaryColor||'';
+  const accent=org.accent_color||org.accentColor||'';
+  if(/^#[0-9a-f]{6}$/i.test(primary))document.documentElement.style.setProperty('--teal',primary);
+  if(/^#[0-9a-f]{6}$/i.test(secondary))document.documentElement.style.setProperty('--mint',secondary);
+  if(/^#[0-9a-f]{6}$/i.test(accent))document.documentElement.style.setProperty('--red',accent);
+}
+function enterpriseBrandBanner(){
+  const org=S.enterprise?.organization;
+  if(!S.enterprise?.enterprise||!org)return'';
+  const logo=String(org.logo_url||org.logoUrl||'').trim();
+  const role=S.enterprise.role==='admin'?'CERCA EMPRESAS · Administrador':'CERCA EMPRESAS';
+  return '<div class="enterpriseBrand">'+
+    (logo?'<div class="enterpriseLogo"><img src="'+esc(logo)+'" alt="'+esc(org.name||'Empresa')+'" referrerpolicy="no-referrer"></div>':'')+
+    '<div class="enterpriseBrandCopy"><strong>'+esc(org.name||'CERCA Empresas')+'</strong><span>'+role+'</span></div>'+
+  '</div>';
 }
 async function networkCall(action,body=null,method='POST'){const q='?action='+encodeURIComponent(action);return request(CFG.network+q,{method,body:body||undefined})}
 async function loadNetwork(){try{S.network=await networkCall('state',null,'GET');S.activeEmergency=S.network?.active_emergency||null;return S.network}catch(e){console.warn(e);return null}}
@@ -98,9 +113,8 @@ async function loadNetwork(){try{S.network=await networkCall('state',null,'GET')
 function renderDashboard(){
   destroyMap();
   const name=S.profile?.full_name||S.user?.user_metadata?.full_name||S.user?.email?.split('@')[0]||'';
-  const org=S.enterprise?.organization;
-  const orgLine=S.enterprise?.enterprise&&org?'<div class="infoNote" style="margin-bottom:12px"><strong>'+esc(org.name)+'</strong> · '+(S.enterprise.role==='admin'?'Administrador':'CERCA Empresas')+'</div>':'';
-  app.innerHTML='<div class="dash"><section class="card panel"><div class="hello"><div><h1>Hola, '+esc(name)+'</h1><p>Tu Red CERCA está lista para acompañarte.</p></div><button id="profileBtn" class="btn light sm">Mi cuenta</button></div>'+orgLine+'<nav class="nav"><button data-tab="home" class="active">Inicio</button><button data-tab="network">Mi Red</button><button data-tab="info">Información útil</button><button data-tab="alerts">Alertas</button><button data-tab="enterprise">Empresa</button></nav><div id="sideContent"></div></section><section class="card panel"><div id="belowContent"></div></section><section id="alertMapCard" class="card mapCard alertMapCard hidden"><div class="mapHeader"><div><strong id="mapTitle">Alerta CERCA</strong><div id="mapMeta" class="mapMeta">Esperando ubicación…</div></div><span id="liveBadge" class="badge red">SOS ACTIVO</span></div><div id="map"></div><div class="mapFooter"><span id="mapFooterText" class="mapMeta">Seguimiento de la persona que activó la alerta.</span><div class="actions"><button id="centerMapBtn" class="btn light sm">Centrar</button><a id="mapsLink" class="btn light sm hidden" target="_blank" rel="noopener">Abrir en Maps</a><button id="hideMapBtn" class="btn light sm">Ocultar mapa</button></div></div></section></div>';
+  const orgLine=enterpriseBrandBanner();
+  app.innerHTML='<div class="dash"><section class="card panel">'+orgLine+'<div class="hello"><div><h1>Hola, '+esc(name)+'</h1><p>Tu Red CERCA está lista para acompañarte.</p></div><button id="profileBtn" class="btn light sm">Mi cuenta</button></div><nav class="nav"><button data-tab="home" class="active">Inicio</button><button data-tab="network">Mi Red</button><button data-tab="info">Información útil</button><button data-tab="alerts">Alertas</button><button data-tab="enterprise">Empresa</button></nav><div id="sideContent"></div></section><section class="card panel"><div id="belowContent"></div></section><section id="alertMapCard" class="card mapCard alertMapCard hidden"><div class="mapHeader"><div><strong id="mapTitle">Alerta CERCA</strong><div id="mapMeta" class="mapMeta">Esperando ubicación…</div></div><span id="liveBadge" class="badge red">SOS ACTIVO</span></div><div id="map"></div><div class="mapFooter"><span id="mapFooterText" class="mapMeta">Seguimiento de la persona que activó la alerta.</span><div class="actions"><button id="centerMapBtn" class="btn light sm">Centrar</button><a id="mapsLink" class="btn light sm hidden" target="_blank" rel="noopener">Abrir en Maps</a><button id="hideMapBtn" class="btn light sm">Ocultar mapa</button></div></div></section></div>';
   document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));renderSide()});
   $('profileBtn').onclick=()=>{S.tab='profile';document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));renderSide()};
   $('centerMapBtn').onclick=centerMap;
@@ -175,7 +189,36 @@ function renderSide(){
 function renderHome(el){
   const active=!!S.activeEmergency;
   el.innerHTML='<div class="sosZone"><button id="sosBtn" class="sosButton '+(active?'active':'')+'">'+(active?'SOS ACTIVO':'PEDIR<br>AYUDA')+'</button><div class="sosHint">'+(active?'Tu ubicación se está actualizando mientras CERCA permanezca activa.':'Mantené apretado 2 segundos. Tendrás una cuenta regresiva para cancelar.')+'</div><div class="actions" style="justify-content:center"><button id="silentBtn" class="btn light">'+(active?'Seguimiento activo':'SOS silencioso')+'</button>'+(active?'<button id="resolveBtn" class="btn successBtn">ESTOY BIEN · FINALIZAR</button>':'')+'</div></div><div class="statusBox"><div class="statusLine"><span class="dot '+(active?'live':'')+'"></span><span>'+(active?'Emergencia activa':'Protección lista')+'</span></div><div class="mini">'+(active?'CERCA seguirá enviando nuevas posiciones al backend mientras el navegador permita el seguimiento.':'Al activar SOS avisaremos a tu Red CERCA con tu ubicación disponible.')+'</div></div>';
-  const b=$('sosBtn');if(active)b.onclick=()=>toast('La emergencia ya está activa.');else{let timer=null;b.onpointerdown=()=>{timer=setTimeout(()=>confirmSOS(false),2000)};b.onpointerup=b.onpointercancel=()=>{clearTimeout(timer)}}
+  const b=$('sosBtn');
+  if(active){
+    b.onclick=()=>toast('La emergencia ya está activa.');
+  }else{
+    let timer=null,triggered=false;
+    const cancelPress=()=>{
+      if(timer){clearTimeout(timer);timer=null}
+      b.classList.remove('pressing');
+    };
+    b.oncontextmenu=e=>{e.preventDefault();return false};
+    b.onselectstart=e=>{e.preventDefault();return false};
+    b.onpointerdown=e=>{
+      e.preventDefault();
+      if(e.button!==undefined&&e.button!==0)return;
+      triggered=false;
+      try{b.setPointerCapture?.(e.pointerId)}catch{}
+      b.classList.add('pressing');
+      timer=setTimeout(()=>{
+        timer=null;triggered=true;b.classList.remove('pressing');confirmSOS(false);
+      },2000);
+    };
+    b.onpointerup=e=>{
+      e.preventDefault();
+      try{b.releasePointerCapture?.(e.pointerId)}catch{}
+      if(!triggered)cancelPress();
+    };
+    b.onpointercancel=cancelPress;
+    b.onpointerleave=e=>{if(e.pointerType==='mouse')cancelPress()};
+    b.onclick=e=>e.preventDefault();
+  }
   $('silentBtn').onclick=()=>active?toast('La emergencia ya está activa.'):confirmSOS(true);
   if($('resolveBtn'))$('resolveBtn').onclick=resolveEmergency;
 }

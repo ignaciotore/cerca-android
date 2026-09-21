@@ -38,3 +38,9 @@
 .subscriptionPrice{font-size:30px;font-weight:950;color:var(--teal);margin:14px 0}
 .subscriptionPrice span{font-size:13px;color:var(--muted);font-weight:800}
 @media(max-width:600px){.subscriptionCard{align-items:flex-start;flex-direction:column}.subscriptionCard .btn{width:100%}}
+
+.contactRoles{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.contactRole{display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:900;border:1px solid var(--line);background:#f7faf9;color:var(--ink)}
+.contactRole.call{background:#eef7ff}
+.contactRole.sms{background:#f4f1ff}
+.contactRole.cerca{background:var(--mint);color:var(--teal)}

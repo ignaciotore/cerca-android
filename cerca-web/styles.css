@@ -44,3 +44,6 @@
 .contactRole.call{background:#eef7ff}
 .contactRole.sms{background:#f4f1ff}
 .contactRole.cerca{background:var(--mint);color:var(--teal)}
+
+.networkAddActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:600px){.networkAddActions{width:100%;justify-content:flex-start}.networkAddActions .btn{flex:1}}

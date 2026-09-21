@@ -288,7 +288,41 @@ function startTracking(){
 function stopTracking(){if(S.watchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(S.watchId);S.watchId=null}}
 async function resolveEmergency(){const id=S.activeEmergency?.id||S.network?.active_emergency?.id;if(!id)return;try{await networkCall('emergency_resolve',{emergency_id:id});stopTracking();S.activeEmergency=null;await loadNetwork();toast('Emergencia finalizada.');renderSide();renderBelow()}catch(e){toast(e.message,'error')}}
 
-function networkCollections(){const n=S.network||{};return{links:arr(n,'links','network_links','members','contacts'),invites:arr(n,'invitations','pending_invites','invites'),alerts:arr(n,'incoming_alerts','alerts')}}
+function networkCollections(){
+  const n=S.network||{};
+  const synced=arr(n,'contacts','outgoing');
+  const linked=arr(n,'links','network_links','members');
+  return{
+    links:linked.length?linked:synced,
+    syncedContacts:synced,
+    invites:arr(n,'invitations','pending_invites','invites'),
+    alerts:arr(n,'incoming_alerts','alerts')
+  }
+}
+function normNetPhone(v){return String(v||'').replace(/\D/g,'')}
+function syncedRoleFor(x){
+  const all=networkCollections().syncedContacts||[];
+  const px=normNetPhone(first(x,'phone_e164','phone','target_phone','contact_phone'));
+  const nx=String(x.display_name||x.full_name||x.name||'').trim().toLowerCase();
+  const direct=(x.sms_enabled!==undefined||x.call_enabled!==undefined)?x:null;
+  const match=direct||all.find(c=>{
+    const pc=normNetPhone(first(c,'phone_e164','phone'));
+    const nc=String(c.name||c.display_name||'').trim().toLowerCase();
+    return (px&&pc&&px===pc)||(!px&&nx&&nc===nx);
+  });
+  return{
+    sms:match?.sms_enabled===true,
+    call:match?.call_enabled===true,
+    cerca:match?.has_cerca===true||!!(x.id||x.link_id||x.owner_user_id||x.target_user_id)
+  }
+}
+function roleBadges(x){
+  const r=syncedRoleFor(x),out=[];
+  if(r.call)out.push('<span class="contactRole call">📞 Llamada</span>');
+  if(r.sms)out.push('<span class="contactRole sms">✉️ SMS</span>');
+  if(r.cerca||(!r.call&&!r.sms))out.push('<span class="contactRole cerca">🔔 Alerta CERCA</span>');
+  return '<div class="contactRoles">'+out.join('')+'</div>';
+}
 function renderNetwork(el){
   if(!fullAccess()){
     el.innerHTML=premiumWall('Mi Red CERCA');
@@ -302,7 +336,14 @@ function renderNetwork(el){
   el.querySelectorAll('[data-medical]').forEach(s=>s.onchange=()=>setMedicalAccess(s.dataset.medical,s.value));
 }
 
-function linkCard(x){const id=x.id||x.link_id||'';const n=x.display_name||x.full_name||x.name||x.email||'Contacto CERCA';const rel=x.relationship||x.relation||'Red CERCA';const med=x.medical_access||'never';return'<div class="item"><div class="itemTop"><div><h3>'+esc(n)+'</h3><p>'+esc(rel)+'</p></div><span class="badge">'+(med==='never'?'Info privada':med==='emergency'?'Solo en emergencia':'Info autorizada')+'</span></div>'+(id?'<label style="margin-top:10px">Información útil</label><select class="select" data-medical="'+esc(id)+'"><option value="never" '+(med==='never'?'selected':'')+'>No compartir</option><option value="emergency" '+(med==='emergency'?'selected':'')+'>Solo durante una emergencia</option><option value="always" '+(med==='always'?'selected':'')+'>Siempre autorizada</option></select><div class="itemActions"><button class="btn light sm" data-remove="'+esc(id)+'">Quitar de la red</button></div>':'')+'</div>'}
+function linkCard(x){
+  const id=x.id||x.link_id||'';
+  const n=x.display_name||x.full_name||x.name||x.email||'Contacto CERCA';
+  const rel=x.relationship||x.relation||'Red CERCA';
+  const med=x.medical_access||'never';
+  const phone=first(x,'phone_e164','phone','target_phone','contact_phone');
+  return'<div class="item"><div class="itemTop"><div><h3>'+esc(n)+'</h3><p>'+esc(rel)+(phone?' · '+esc(phone):'')+'</p>'+roleBadges(x)+'</div><span class="badge">'+(med==='never'?'Info privada':med==='emergency'?'Solo en emergencia':'Info autorizada')+'</span></div>'+(id?'<label style="margin-top:10px">Información útil</label><select class="select" data-medical="'+esc(id)+'"><option value="never" '+(med==='never'?'selected':'')+'>No compartir</option><option value="emergency" '+(med==='emergency'?'selected':'')+'>Solo durante una emergencia</option><option value="always" '+(med==='always'?'selected':'')+'>Siempre autorizada</option></select><div class="itemActions"><button class="btn light sm" data-remove="'+esc(id)+'">Quitar de la red</button></div>':'')+'</div>'
+}
 
 function newInviteModal(){const w=modal('<h2>Invitar a Mi Red CERCA</h2><p>Generá una invitación para una persona de confianza.</p><label>Nombre</label><input id="invName" class="field"><label>Relación</label><input id="invRel" class="field" placeholder="Ej: hermana, amigo, pareja"><label>Información útil ante una emergencia</label><select id="invMed" class="select"><option value="never">No compartir</option><option value="emergency">Solo durante una emergencia</option><option value="always">Siempre autorizada</option></select><button id="makeInvite" class="btn primary block" style="margin-top:16px">Generar invitación</button>');$('makeInvite').onclick=async()=>{try{const d=await networkCall('create_invite',{display_name:$('invName').value.trim(),relationship:$('invRel').value.trim(),medical_access:$('invMed').value});const code=d.code||d.invite_code||d.invitation?.code||'';w.innerHTML='<div class="modal"><h2>Invitación creada</h2><p>Compartí este código con la persona:</p><div class="countdown" style="font-size:44px;color:var(--teal)">'+esc(code||'Creada')+'</div><button id="closeInvite" class="btn primary block">Listo</button></div>';$('closeInvite').onclick=()=>{w.remove();refreshAll()}}catch(e){toast(e.message,'error')}}}
 function acceptInviteModal(){const w=modal('<h2>Unirme a una Red CERCA</h2><p>Ingresá el código que te compartieron.</p><input id="inviteCode" class="field" style="text-transform:uppercase" placeholder="CÓDIGO"><button id="acceptCode" class="btn primary block" style="margin-top:14px">Aceptar invitación</button>');$('acceptCode').onclick=async()=>{try{await networkCall('accept_code',{code:$('inviteCode').value.trim().toUpperCase()});w.remove();toast('Ya sos parte de esa Red CERCA.');refreshAll()}catch(e){toast(e.message,'error')}}}

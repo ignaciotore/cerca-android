@@ -7,7 +7,7 @@ const SESSION_KEY='cerca_web_session_v1';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 const app=$('app');
-let S={session:null,user:null,profile:null,entitlement:null,enterprise:null,activeEmergency:null,watchId:null,map:null,marker:null,trail:null,trailPoints:[],poll:null,currentAlert:null,lastIncomingId:'',tab:'home'};
+let S={session:null,user:null,profile:null,entitlement:null,billing:null,enterprise:null,activeEmergency:null,watchId:null,map:null,marker:null,trail:null,trailPoints:[],poll:null,currentAlert:null,lastIncomingId:'',tab:'home'};
 
 function sessionLoad(){try{const x=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');if(x&&x.access_token&&x.refresh_token)S.session=x}catch{}}
 function sessionSave(x){S.session=x;localStorage.setItem(SESSION_KEY,JSON.stringify(x))}
@@ -76,16 +76,54 @@ async function loadEntitlement(){
   const uid=S.user?.id;if(!uid)return null;
   try{const d=await request('/rest/v1/entitlements?user_id=eq.'+encodeURIComponent(uid)+'&select=subscription_active,expires_at');S.entitlement=Array.isArray(d)?d[0]||null:d;return S.entitlement}catch{S.entitlement=null;return null}
 }
+async function loadBilling(){
+  if(!token())return null;
+  try{
+    const r=await fetch('/api/billing?action=status',{headers:{Authorization:'Bearer '+token(),Accept:'application/json'},cache:'no-store'});
+    const d=await r.json().catch(()=>({}));
+    S.billing=d;return d;
+  }catch{S.billing={configured:false};return S.billing}
+}
 async function enterpriseCall(action,body=null,method='POST'){return request('/functions/v1/cerca-enterprise?action='+encodeURIComponent(action),{method,body:body||undefined})}
 async function loadEnterprise(){try{S.enterprise=await enterpriseCall('state',null,'GET');return S.enterprise}catch{S.enterprise={enterprise:false};return S.enterprise}}
+function trialEndMs(){const x=S.profile?.trial_ends_at||S.billing?.trial_ends_at;const n=x?Date.parse(x):0;return Number.isFinite(n)?n:0}
+function trialActive(){return trialEndMs()>Date.now()}
+function trialDaysLeft(){const d=trialEndMs()-Date.now();return d>0?Math.max(1,Math.ceil(d/86400000)):0}
+function legacyPremiumActive(){
+  const sub=S.entitlement,end=sub?.expires_at?Date.parse(sub.expires_at):0;
+  return !!(sub?.subscription_active&&end>Date.now());
+}
+function mpPremiumActive(){return !!S.billing?.subscription?.active}
+function enterpriseAccess(){return !!S.enterprise?.enterprise_access_active}
+function fullAccess(){return enterpriseAccess()||trialActive()||legacyPremiumActive()||mpPremiumActive()}
 function planLabel(){
-  const now=Date.now(),sub=S.entitlement;
-  const subEnd=sub?.expires_at?Date.parse(sub.expires_at):0;
-  if(sub?.subscription_active&&subEnd>now)return'Premium';
-  const trialEnd=S.profile?.trial_ends_at?Date.parse(S.profile.trial_ends_at):0;
-  if(trialEnd>now)return'Prueba activa';
-  if(S.enterprise?.enterprise_access_active)return'Empresa';
+  if(enterpriseAccess())return'Empresa';
+  if(mpPremiumActive()||legacyPremiumActive())return'Premium';
+  if(trialActive())return'Prueba activa';
   return'Free';
+}
+function subscriptionStatusText(){
+  if(enterpriseAccess())return'Incluido por tu empresa';
+  if(mpPremiumActive())return'Suscripción activa';
+  if(legacyPremiumActive())return'Premium activo';
+  if(trialActive())return'Prueba · '+trialDaysLeft()+' día(s) restante(s)';
+  return'Prueba finalizada';
+}
+function premiumWall(title){
+  const configured=!!S.billing?.configured;
+  return '<div class="subscriptionWall"><div class="subscriptionLock">🔒</div><h2>'+esc(title)+'</h2><p>Esta función requiere CERCA Premium.</p><div class="subscriptionPrice">$25.000 <span>ARS / mes</span></div><p class="mini">El SOS y las alertas de emergencia siguen disponibles.</p><button class="btn primary block" data-subscribe '+(configured?'':'disabled')+'>'+(configured?'Activar suscripción':'Mercado Pago pendiente de vinculación')+'</button></div>';
+}
+async function startSubscription(){
+  if(!S.billing?.configured)return toast('Falta vincular la cuenta de Mercado Pago para habilitar el débito automático.','error');
+  try{
+    setPill('Abriendo Mercado Pago…');
+    const r=await fetch('/api/billing?action=checkout',{method:'POST',headers:{Authorization:'Bearer '+token(),Accept:'application/json'}});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'No pudimos iniciar la suscripción.');
+    if(d.already_active){await loadBilling();toast('Tu suscripción ya está activa.');renderSide();return}
+    if(d.checkout_url){location.href=d.checkout_url;return}
+    throw new Error('Mercado Pago no devolvió el checkout.');
+  }catch(e){toast(e.message||String(e),'error')}finally{setPill('CERCA activa')}
 }
 function applyEnterpriseBrand(){
   const org=S.enterprise?.organization;
@@ -252,6 +290,11 @@ async function resolveEmergency(){const id=S.activeEmergency?.id||S.network?.act
 
 function networkCollections(){const n=S.network||{};return{links:arr(n,'links','network_links','members','contacts'),invites:arr(n,'invitations','pending_invites','invites'),alerts:arr(n,'incoming_alerts','alerts')}}
 function renderNetwork(el){
+  if(!fullAccess()){
+    el.innerHTML=premiumWall('Mi Red CERCA');
+    el.querySelector('[data-subscribe]')?.addEventListener('click',startSubscription);
+    return;
+  }
   const c=networkCollections();
   el.innerHTML='<div class="sectionHead"><div><h2>Mi Red CERCA</h2><p>Personas que pueden recibir tus alertas.</p></div><button id="newInvite" class="btn primary sm">+ Invitar</button></div><div class="list">'+(c.links.length?c.links.map(linkCard).join(''):'<div class="empty">Todavía no hay personas vinculadas a tu Red CERCA.</div>')+'</div><div style="margin-top:16px"><button id="acceptInvite" class="btn light block">Tengo un código de invitación</button></div>';
   $('newInvite').onclick=newInviteModal;$('acceptInvite').onclick=acceptInviteModal;
@@ -268,6 +311,11 @@ async function setMedicalAccess(id,value){try{await networkCall('set_medical_acc
 
 async function fetchMedical(){try{const uid=S.user.id;const d=await request('/rest/v1/medical_profiles?user_id=eq.'+encodeURIComponent(uid)+'&select=*');return Array.isArray(d)?d[0]||null:d}catch{return null}}
 async function renderInfo(el){
+  if(!fullAccess()){
+    el.innerHTML=premiumWall('Información útil ante una emergencia');
+    el.querySelector('[data-subscribe]')?.addEventListener('click',startSubscription);
+    return;
+  }
   el.innerHTML='<div class="sectionHead"><div><h2>Información útil ante una emergencia</h2><p>Campo opcional que podés compartir con personas autorizadas.</p></div></div><div class="infoNote">Podés escribir alergias, medicación, cobertura, contacto alternativo o cualquier dato que consideres útil. CERCA no brinda diagnóstico ni reemplaza la atención médica.</div><label>Información</label><textarea id="infoText" class="textarea" placeholder="Ej: Alergia a penicilina. Cobertura..."></textarea><label><input id="shareInfo" type="checkbox"> Permitir compartirla cuando corresponda según Mi Red CERCA</label><button id="saveInfo" class="btn primary block" style="margin-top:14px">Guardar</button>';
   const m=await fetchMedical();if($('infoText')){$('infoText').value=m?.notes||'';$('shareInfo').checked=!!m?.share_enabled;$('saveInfo').onclick=()=>saveInfo(m)}
 }
@@ -318,6 +366,11 @@ async function openAlertInfo(id){
 
 async function renderEnterprise(el){
   const e=S.enterprise||{enterprise:false};
+  if(!e.enterprise&&!fullAccess()){
+    el.innerHTML=premiumWall('CERCA Empresas');
+    el.querySelector('[data-subscribe]')?.addEventListener('click',startSubscription);
+    return;
+  }
   if(!e.enterprise){
     el.innerHTML='<div class="sectionHead"><div><h2>CERCA Empresas</h2><p>Usá un código de invitación para vincular tu cuenta.</p></div></div><div class="infoNote">Si tu empresa te invitó, ingresá el código de 8 caracteres. Tu cuenta personal se mantiene y pasa a usar la identidad de la organización.</div><label>Código de empresa</label><input id="enterpriseCode" class="field" maxlength="8" style="text-transform:uppercase" placeholder="XXXXXXXX"><button id="enterpriseJoinBtn" class="btn primary block" style="margin-top:12px">Unirme a una empresa</button>';
     $('enterpriseJoinBtn').onclick=joinEnterprise;return;
@@ -340,8 +393,13 @@ async function loadEnterpriseMembers(){
 function renderProfile(el){
   const name=S.profile?.full_name||S.user?.user_metadata?.full_name||'—',phone=S.profile?.phone_e164||S.user?.user_metadata?.phone_e164||'—';
   const org=S.enterprise?.enterprise?S.enterprise?.organization?.name:'Individual';
-  el.innerHTML='<div class="sectionHead"><div><h2>Mi cuenta</h2><p>Datos de tu cuenta CERCA.</p></div></div><div class="profileGrid"><div class="profileBox"><small>Nombre</small><strong>'+esc(name)+'</strong></div><div class="profileBox"><small>Email</small><strong>'+esc(S.user?.email||'—')+'</strong></div><div class="profileBox"><small>Celular</small><strong>'+esc(phone)+'</strong></div><div class="profileBox"><small>Plan</small><strong>'+esc(planLabel())+'</strong></div><div class="profileBox"><small>Cuenta</small><strong>'+esc(org||'Individual')+'</strong></div><div class="profileBox"><small>Versión</small><strong>Web / PWA</strong></div></div><button id="notifyBtn" class="btn light block" style="margin-top:14px">Activar notificaciones</button><button id="logoutBtn" class="btn dark block" style="margin-top:8px">Cerrar sesión</button>';
-  $('logoutBtn').onclick=logout;$('notifyBtn').onclick=enableNotifications;
+  const configured=!!S.billing?.configured,mp=S.billing?.subscription;
+  const next=mp?.next_payment_date?new Date(mp.next_payment_date).toLocaleDateString('es-AR'):'';
+  const billingCard=enterpriseAccess()
+    ?'<div class="subscriptionCard active"><div><small>Suscripción</small><h3>Incluida por '+esc(org||'tu empresa')+'</h3><p>No necesitás una suscripción individual.</p></div></div>'
+    :'<div class="subscriptionCard '+((mpPremiumActive()||legacyPremiumActive())?'active':'')+'"><div><small>CERCA PREMIUM</small><h3>$25.000 <span>ARS / mes</span></h3><p>'+esc(subscriptionStatusText())+(next?' · Próximo cobro: '+esc(next):'')+'</p></div>'+((mpPremiumActive()||legacyPremiumActive())?'<span class="badge">ACTIVA</span>':'<button id="subscribeBtn" class="btn primary sm" '+(configured?'':'disabled')+'>'+(configured?'Activar suscripción':'Mercado Pago pendiente')+'</button>')+'</div>';
+  el.innerHTML='<div class="sectionHead"><div><h2>Mi cuenta</h2><p>Datos de tu cuenta CERCA.</p></div></div>'+billingCard+'<div class="profileGrid"><div class="profileBox"><small>Nombre</small><strong>'+esc(name)+'</strong></div><div class="profileBox"><small>Email</small><strong>'+esc(S.user?.email||'—')+'</strong></div><div class="profileBox"><small>Celular</small><strong>'+esc(phone)+'</strong></div><div class="profileBox"><small>Plan</small><strong>'+esc(planLabel())+'</strong></div><div class="profileBox"><small>Cuenta</small><strong>'+esc(org||'Individual')+'</strong></div><div class="profileBox"><small>Versión</small><strong>Web / PWA</strong></div></div><button id="notifyBtn" class="btn light block" style="margin-top:14px">Activar notificaciones</button><button id="logoutBtn" class="btn dark block" style="margin-top:8px">Cerrar sesión</button>';
+  $('logoutBtn').onclick=logout;$('notifyBtn').onclick=enableNotifications;if($('subscribeBtn'))$('subscribeBtn').onclick=startSubscription;
 }
 async function enableNotifications(){if(!('Notification'in window))return toast('Este navegador no ofrece notificaciones web.','error');const p=await Notification.requestPermission();if(p==='granted'){toast('Notificaciones activadas.');await tryWebPush()}else toast('No se habilitaron las notificaciones.','error')}
 async function tryWebPush(){try{const cfg=await networkCall('push_config',null,'GET');if(!cfg?.enabled||!cfg?.vapidKey)return;const reg=await navigator.serviceWorker.ready;const key=uint8(cfg.vapidKey);const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});await networkCall('register_web_push',{subscription:sub.toJSON()});toast('Push web registrado.')}catch(e){console.warn('Web push pendiente',e)}}
@@ -350,10 +408,10 @@ async function logout(){try{await request('/auth/v1/logout',{method:'POST'})}cat
 
 function renderBelow(){
   const b=$('belowContent');if(!b)return;const alerts=networkCollections().alerts;const links=networkCollections().links;
-  b.innerHTML='<div class="sectionHead"><div><h2>Estado de CERCA</h2><p>Resumen de tu protección.</p></div><button id="refreshBtn" class="btn light sm">Actualizar</button></div><div class="profileGrid"><div class="profileBox"><small>Mi Red CERCA</small><strong>'+links.length+' persona(s)</strong></div><div class="profileBox"><small>Alertas activas</small><strong>'+alerts.length+'</strong></div><div class="profileBox"><small>Ubicación</small><strong>'+(S.activeEmergency?'Compartiendo':'Privada')+'</strong></div><div class="profileBox"><small>Instalación</small><strong>'+(matchMedia('(display-mode: standalone)').matches?'Instalada':'Disponible')+'</strong></div></div>';
+  b.innerHTML='<div class="sectionHead"><div><h2>Estado de CERCA</h2><p>Resumen de tu protección.</p></div><button id="refreshBtn" class="btn light sm">Actualizar</button></div><div class="profileGrid"><div class="profileBox"><small>Mi Red CERCA</small><strong>'+links.length+' persona(s)</strong></div><div class="profileBox"><small>Alertas activas</small><strong>'+alerts.length+'</strong></div><div class="profileBox"><small>Plan</small><strong>'+esc(planLabel())+'</strong></div><div class="profileBox"><small>Ubicación</small><strong>'+(S.activeEmergency?'Compartiendo':'Privada')+'</strong></div><div class="profileBox"><small>Instalación</small><strong>'+(matchMedia('(display-mode: standalone)').matches?'Instalada':'Disponible')+'</strong></div></div>';
   $('refreshBtn').onclick=refreshAll;
 }
-async function refreshAll(){await loadNetwork();renderSide();renderBelow();syncCurrentAlertFromState()}
+async function refreshAll(){await Promise.all([loadNetwork(),loadBilling()]);renderSide();renderBelow();syncCurrentAlertFromState()}
 function stopPolling(){if(S.poll){clearInterval(S.poll);S.poll=null}}
 function startPolling(){stopPolling();S.poll=setInterval(async()=>{const prev=S.lastIncomingId;await loadNetwork();const alerts=networkCollections().alerts;const firstId=String(alerts[0]?.id||alerts[0]?.emergency_id||'');if(firstId&&firstId!==prev){S.lastIncomingId=firstId;if(Notification.permission==='granted'&&document.visibilityState!=='visible'){try{const reg=await navigator.serviceWorker?.ready;await reg?.showNotification('🚨 Alerta CERCA',{body:(alerts[0]?.person_name||'Una persona de tu Red CERCA')+' necesita ayuda.',icon:'/icon.svg',tag:firstId,data:{emergency_id:firstId}})}catch{}}if(S.tab==='alerts')renderSide();if(document.visibilityState==='visible')openAlert(firstId)}syncCurrentAlertFromState();renderBelow()},6000)}
 navigator.serviceWorker?.addEventListener?.('message',e=>{if(e.data?.type==='open-alert'&&e.data.id)openAlert(e.data.id)});
@@ -365,14 +423,16 @@ async function boot(){
   if(!S.session){renderAuth('login');return}
   const u=await authMe();if(!u){renderAuth('login');return}
   if(recovery){renderRecovery();setPill('Recuperar acceso');return}
-  await Promise.all([loadProfile(),loadEntitlement(),loadNetwork(),loadEnterprise()]);
+  await Promise.all([loadProfile(),loadEntitlement(),loadBilling(),loadNetwork(),loadEnterprise()]);
   if(S.profile?.phone_e164){try{await networkCall('set_phone',{phone:S.profile.phone_e164})}catch{}}
   applyEnterpriseBrand();
   renderDashboard();
   if(S.activeEmergency)startTracking();
   const alerts=networkCollections().alerts;
   S.lastIncomingId=String(alerts[0]?.id||alerts[0]?.emergency_id||'');
-  const alertParam=new URLSearchParams(location.search).get('alert');if(alertParam)openAlert(alertParam);
+  const params=new URLSearchParams(location.search);
+  const alertParam=params.get('alert');if(alertParam)openAlert(alertParam);
+  if(params.get('subscription')==='return'){history.replaceState(null,'',location.pathname);loadBilling().then(()=>{toast(mpPremiumActive()?'Suscripción activada.':'Mercado Pago está procesando la adhesión.');renderSide();renderBelow()})}
   setPill('CERCA activa');
 }
 boot();

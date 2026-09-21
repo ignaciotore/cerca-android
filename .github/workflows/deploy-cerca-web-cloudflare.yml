@@ -52,4 +52,5 @@ jobs:
           --commit-message "${{ github.event.head_commit.message || 'Deploy CERCA Web' }}"
 
       - name: Mostrar URL productiva
-        run: echo "CERCA productiva: https://$PROJECT_NAME.pages.dev"
+        run: |
+          echo "CERCA productiva: https://$PROJECT_NAME.pages.dev"

@@ -16,3 +16,6 @@ Versión web instalable de CERCA, separada de la app Android nativa.
 
 ## Backend
 Usa el backend existente de CERCA en Supabase. La app Android actual no se modifica.
+
+
+Deploy automático: Vercel / cerca-seguridad.

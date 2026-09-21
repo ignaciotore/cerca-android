@@ -46,10 +46,13 @@ class FamilyCircleActivity : AppCompatActivity() {
 
     private data class C(val slot:Int,val name:String,val phone:String,val access:String)
     private fun contacts(): List<C> {
-        val p=prefs(); val out=mutableListOf<C>()
+        val p=prefs(); val out=mutableListOf<C>(); val seen=mutableSetOf<String>()
         for(i in 1..4){
             val phone=p.getString("sms"+i+"Phone","").orEmpty()
-            if(phone.isNotBlank()) out += C(i,p.getString("sms"+i+"Name","").orEmpty().ifBlank{"Contacto"},phone,p.getString("sms"+i+"MedicalAccess","emergency").orEmpty().ifBlank{"emergency"})
+            val key=phoneKey(phone)
+            if(phone.isNotBlank() && key.isNotBlank() && seen.add(key)) {
+                out += C(i,p.getString("sms"+i+"Name","").orEmpty().ifBlank{"Contacto"},phone,p.getString("sms"+i+"MedicalAccess","emergency").orEmpty().ifBlank{"emergency"})
+            }
         }
         return out
     }
@@ -117,8 +120,8 @@ class FamilyCircleActivity : AppCompatActivity() {
         top.addView(left,LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f))
         top.addView(TextView(this).apply { text=if(has) "✓ Tiene CERCA" else "Sin CERCA"; textSize=13f; setTypeface(typeface,android.graphics.Typeface.BOLD); setTextColor(Color.parseColor(if(has)"#0B5960" else "#657579")); setPadding(dp(10),dp(7),dp(10),dp(7)); setBackgroundColor(Color.parseColor(if(has)"#DDF2F0" else "#EEF1F1")) })
         box.addView(top)
-        val call=prefs().getString("callPhone","").orEmpty()==c.phone
-        box.addView(body("SMS activo" + (if(call) "  ·  Llamada activa" else "") + (if(has) "  ·  Alerta CERCA activa" else "")))
+        val call=phoneKey(prefs().getString("callPhone","").orEmpty())==phoneKey(c.phone)
+        box.addView(body((if(call) "Contacto de llamada" else "Contacto SMS") + (if(has) "  ·  Alerta CERCA activa" else "")))
 
         if (BuildConfig.HEALTH_FEATURES) {
             val medical = card().apply {
@@ -140,7 +143,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         return box
     }
 
-    private fun findRemote(phone:String, arr:JSONArray?):JSONObject?{ if(arr==null)return null; for(i in 0 until arr.length()){ val o=arr.optJSONObject(i)?:continue; if(norm(o.optString("phone_e164"))==norm(phone)) return o }; return null }
+    private fun findRemote(phone:String, arr:JSONArray?):JSONObject?{ if(arr==null)return null; val key=phoneKey(phone); for(i in 0 until arr.length()){ val o=arr.optJSONObject(i)?:continue; if(phoneKey(o.optString("phone_e164").ifBlank{o.optString("phone")})==key) return o }; return null }
     private fun accessLabel(v:String)=when(v){"always"->"siempre";"never"->"no compartir";else->"solo en emergencia"}
 
     private fun chooseAccess(c:C){
@@ -155,7 +158,7 @@ class FamilyCircleActivity : AppCompatActivity() {
 
     private fun removeContact(c:C){
         AlertDialog.Builder(this).setTitle("Quitar a "+c.name).setMessage("Dejará de recibir tus alertas CERCA.").setNegativeButton("CANCELAR",null).setPositiveButton("QUITAR"){_,_->
-            val p=prefs(); val wasCall=p.getString("callPhone","").orEmpty()==c.phone
+            val p=prefs(); val wasCall=phoneKey(p.getString("callPhone","").orEmpty())==phoneKey(c.phone)
             p.edit().putString("sms"+c.slot+"Name","").putString("sms"+c.slot+"Phone","").putString("sms"+c.slot+"MedicalAccess","emergency").apply()
             if(wasCall){ val next=contacts().firstOrNull(); p.edit().putString("callName",next?.name ?: "").putString("callPhone",next?.phone ?: "").apply() }
             compactSlots(); syncAndReload()
@@ -175,7 +178,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         super.onActivityResult(requestCode,resultCode,data); if(requestCode!=REQ_PICK || resultCode!=Activity.RESULT_OK)return
         val uri=data?.data ?: return; var n=""; var p=""; var cur:Cursor?=null
         try{cur=contentResolver.query(uri,arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,ContactsContract.CommonDataKinds.Phone.NUMBER),null,null,null); if(cur!=null&&cur.moveToFirst()){val ni=cur.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);val pi=cur.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);if(ni>=0)n=cur.getString(ni)?:"";if(pi>=0)p=cur.getString(pi)?:""}}finally{cur?.close()}
-        p=norm(p); if(p.isBlank()){toast("Ese contacto no tiene un teléfono válido.");return}; if(contacts().any{norm(it.phone)==p}){toast("Ese contacto ya está agregado.");return}
+        p=norm(p); if(p.isBlank()){toast("Ese contacto no tiene un teléfono válido.");return}; if(contacts().any{phoneKey(it.phone)==phoneKey(p)}){toast("Ese contacto ya está agregado.");return}
         val slot=(1..4).firstOrNull{i->prefs().getString("sms"+i+"Phone","").isNullOrBlank()} ?: return
         val e=prefs().edit().putString("sms"+slot+"Name",n.ifBlank{"Contacto"}).putString("sms"+slot+"Phone",p).putString("sms"+slot+"MedicalAccess","emergency")
         if(prefs().getString("callPhone","").isNullOrBlank()) e.putString("callName",n.ifBlank{"Contacto"}).putString("callPhone",p)
@@ -188,14 +191,19 @@ class FamilyCircleActivity : AppCompatActivity() {
     }
 
     private fun syncAndReload(){
-        val s=session ?: return; val a=JSONArray(); val call=prefs().getString("callPhone","").orEmpty()
-        for(c in contacts()) a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",true).put("call_enabled",c.phone==call).put("medical_access",if(BuildConfig.HEALTH_FEATURES)c.access else "never"))
+        val s=session ?: return; val a=JSONArray(); val call=prefs().getString("callPhone","").orEmpty(); val callKey=phoneKey(call)
+        for(c in contacts()){
+            val isCall=callKey.isNotBlank() && phoneKey(c.phone)==callKey
+            a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",!isCall).put("call_enabled",isCall).put("medical_access",c.access))
+        }
         executor.execute{try{val state=api.syncNetworkContacts(s,a);runOnUiThread{serverState=state;render()}}catch(e:Exception){runOnUiThread{render();toast(e.message?:"Los contactos quedaron guardados en el teléfono y se sincronizarán cuando vuelva Internet.")}}}
     }
 
     private fun openAlert(a:JSONObject){ startActivity(Intent(this,EmergencyAlertActivity::class.java).apply{putExtra("emergency_id",a.optString("id"));putExtra("owner_user_id",a.optString("owner_user_id"));putExtra("person_name",a.optString("person_name","Contacto CERCA"));putExtra("mode",a.optString("mode","normal"));putExtra("latitude",a.optString("latitude",""));putExtra("longitude",a.optString("longitude",""));putExtra("medical_access",if(BuildConfig.HEALTH_FEATURES)a.optString("medical_access","never") else "never")}) }
 
     private fun norm(raw:String):String{ val v=raw.trim(); return v.filterIndexed{i,ch->ch.isDigit() || (ch=='+'&&i==0)} }
+    private fun phoneKey(raw:String):String{ val d=raw.filter{it.isDigit()}; if(d.isBlank())return ""; return if(d.length>=10)d.takeLast(10) else d.trimStart('0') }
+
     private fun card()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(17),dp(16),dp(17),dp(16));setBackgroundResource(R.drawable.card_bg)}
     private fun title(v:String,s:Float)=TextView(this).apply{text=v;textSize=s;setTextColor(Color.parseColor("#0B5960"));setTypeface(typeface,android.graphics.Typeface.BOLD)}
     private fun body(v:String)=TextView(this).apply{text=v;textSize=14f;setTextColor(Color.parseColor("#657579"));setPadding(0,dp(6),0,dp(8))}

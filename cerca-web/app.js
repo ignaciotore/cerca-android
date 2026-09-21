@@ -25,6 +25,30 @@ function closeModals(){document.querySelectorAll('.modalWrap').forEach(x=>x.remo
 function normPhone(v){let s=String(v||'').trim().replace(/[^\d+]/g,'');if(s.startsWith('+'))return s;let d=s.replace(/\D/g,'').replace(/^0+/,'');if(d.startsWith('54'))return'+'+d;return d.length>=10?'+549'+d:s}
 function arr(obj,...keys){for(const k of keys){if(Array.isArray(obj?.[k]))return obj[k]}return[]}
 function first(obj,...keys){for(const k of keys){if(obj?.[k]!==undefined&&obj?.[k]!==null)return obj[k]}return null}
+function recoveryFromHash(){
+  try{
+    const p=new URLSearchParams(location.hash.replace(/^#/,''));
+    if(p.get('type')!=='recovery'||!p.get('access_token'))return null;
+    return {access_token:p.get('access_token'),refresh_token:p.get('refresh_token')||'',expires_in:Number(p.get('expires_in')||3600),expires_at:Math.floor(Date.now()/1000)+Number(p.get('expires_in')||3600),token_type:p.get('token_type')||'bearer'};
+  }catch{return null}
+}
+function renderRecovery(){
+  app.innerHTML='<section class="card auth"><h1>Nueva contraseña</h1><p class="lead">Elegí una nueva contraseña para tu cuenta CERCA.</p><label>Nueva contraseña</label><input id="newPassword" class="field" type="password" autocomplete="new-password"><label>Repetir contraseña</label><input id="newPassword2" class="field" type="password" autocomplete="new-password"><button id="savePasswordBtn" class="btn primary block" style="margin-top:18px">Guardar contraseña</button><div id="authMsg" class="msg error"></div></section>';
+  $('savePasswordBtn').onclick=updateRecoveredPassword;
+}
+async function updateRecoveredPassword(){
+  const p=$('newPassword').value,p2=$('newPassword2').value,m=$('authMsg'),b=$('savePasswordBtn');
+  if(p.length<8){m.textContent='La contraseña debe tener al menos 8 caracteres.';m.style.display='block';return}
+  if(p!==p2){m.textContent='Las contraseñas no coinciden.';m.style.display='block';return}
+  b.disabled=true;b.textContent='Guardando…';
+  try{
+    await request('/auth/v1/user',{method:'PUT',body:{password:p}});
+    history.replaceState(null,'',location.pathname+location.search);
+    sessionClear();S.user=null;S.profile=null;S.network=null;
+    renderAuth('login');toast('Contraseña actualizada. Ya podés ingresar.');
+  }catch(e){m.textContent=e.message||String(e);m.style.display='block'}
+  finally{if($('savePasswordBtn')){$('savePasswordBtn').disabled=false;$('savePasswordBtn').textContent='Guardar contraseña'}}
+}
 
 function renderAuth(mode='login'){
   setPill('Web instalable');
@@ -42,7 +66,7 @@ function renderAuth(mode='login'){
 function authErr(e){const m=$('authMsg');if(m){m.textContent=e.message||String(e);m.style.display='block'}}
 async function login(){const e=$('email').value.trim(),p=$('password').value;if(!e.includes('@')||!p)return authErr(new Error('Completá email y contraseña.'));const b=$('loginBtn');b.disabled=true;b.textContent='Ingresando…';try{const d=await request('/auth/v1/token?grant_type=password',{method:'POST',auth:false,body:{email:e,password:p}});sessionSave({...d,expires_at:Math.floor(Date.now()/1000)+Number(d.expires_in||3600)});await boot()}catch(err){authErr(err)}finally{b.disabled=false;b.textContent='Ingresar'}}
 async function signup(){const n=$('name').value.trim(),e=$('email').value.trim(),ph=$('phone').value.trim(),p=$('password').value,p2=$('password2').value;if(n.length<2)return authErr(new Error('Ingresá tu nombre y apellido.'));if(!e.includes('@'))return authErr(new Error('Ingresá un email válido.'));if(normPhone(ph).replace(/\D/g,'').length<9)return authErr(new Error('Ingresá tu celular.'));if(p.length<8)return authErr(new Error('La contraseña debe tener al menos 8 caracteres.'));if(p!==p2)return authErr(new Error('Las contraseñas no coinciden.'));const b=$('signupBtn');b.disabled=true;b.textContent='Creando…';try{let family=null;try{family=await request('/functions/v1/cerca-family-signup',{method:'POST',auth:false,body:{full_name:n,email:e,password:p,phone_e164:normPhone(ph)}})}catch{}if(family?.session?.access_token){const x=family.session;sessionSave({...x,expires_at:Math.floor(Date.now()/1000)+Number(x.expires_in||3600)});await boot();return}const d=await request('/auth/v1/signup',{method:'POST',auth:false,body:{email:e,password:p,data:{full_name:n,phone_e164:normPhone(ph)}}});if(d.access_token){sessionSave({...d,expires_at:Math.floor(Date.now()/1000)+Number(d.expires_in||3600)});await boot()}else{renderAuth('login');toast('Cuenta creada. Revisá tu email para confirmarla.')}}catch(err){authErr(err)}finally{if($('signupBtn')){$('signupBtn').disabled=false;$('signupBtn').textContent='Crear cuenta'}}}
-async function resetPassword(){const e=$('email').value.trim();if(!e.includes('@'))return authErr(new Error('Escribí tu email primero.'));try{await request('/auth/v1/recover?redirect_to='+encodeURIComponent(location.origin),{method:'POST',auth:false,body:{email:e}});toast('Te enviamos el enlace para recuperar la contraseña.')}catch(err){authErr(err)}}
+async function resetPassword(){const e=$('email').value.trim();if(!e.includes('@'))return authErr(new Error('Escribí tu email primero.'));try{const redirect=location.origin+location.pathname;await request('/auth/v1/recover?redirect_to='+encodeURIComponent(redirect),{method:'POST',auth:false,body:{email:e}});toast('Te enviamos el enlace para recuperar la contraseña.')}catch(err){authErr(err)}}
 
 async function loadProfile(){
   const uid=S.user?.id;if(!uid)return null;
@@ -98,11 +122,15 @@ function renderNetwork(el){
   el.innerHTML='<div class="sectionHead"><div><h2>Mi Red CERCA</h2><p>Personas que pueden recibir tus alertas.</p></div><button id="newInvite" class="btn primary sm">+ Invitar</button></div><div class="list">'+(c.links.length?c.links.map(linkCard).join(''):'<div class="empty">Todavía no hay personas vinculadas a tu Red CERCA.</div>')+'</div><div style="margin-top:16px"><button id="acceptInvite" class="btn light block">Tengo un código de invitación</button></div>';
   $('newInvite').onclick=newInviteModal;$('acceptInvite').onclick=acceptInviteModal;
   el.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>removeLink(b.dataset.remove));
+  el.querySelectorAll('[data-medical]').forEach(s=>s.onchange=()=>setMedicalAccess(s.dataset.medical,s.value));
 }
-function linkCard(x){const id=x.id||x.link_id||'';const n=x.display_name||x.full_name||x.name||x.email||'Contacto CERCA';const rel=x.relationship||x.relation||'Red CERCA';const med=x.medical_access||'never';return'<div class="item"><div class="itemTop"><div><h3>'+esc(n)+'</h3><p>'+esc(rel)+'</p></div><span class="badge">'+(med==='never'?'Sin info útil':'Info autorizada')+'</span></div>'+(id?'<div class="itemActions"><button class="btn light sm" data-remove="'+esc(id)+'">Quitar de la red</button></div>':'')+'</div>'}
+
+function linkCard(x){const id=x.id||x.link_id||'';const n=x.display_name||x.full_name||x.name||x.email||'Contacto CERCA';const rel=x.relationship||x.relation||'Red CERCA';const med=x.medical_access||'never';return'<div class="item"><div class="itemTop"><div><h3>'+esc(n)+'</h3><p>'+esc(rel)+'</p></div><span class="badge">'+(med==='never'?'Info privada':med==='emergency'?'Solo en emergencia':'Info autorizada')+'</span></div>'+(id?'<label style="margin-top:10px">Información útil</label><select class="select" data-medical="'+esc(id)+'"><option value="never" '+(med==='never'?'selected':'')+'>No compartir</option><option value="emergency" '+(med==='emergency'?'selected':'')+'>Solo durante una emergencia</option><option value="always" '+(med==='always'?'selected':'')+'>Siempre autorizada</option></select><div class="itemActions"><button class="btn light sm" data-remove="'+esc(id)+'">Quitar de la red</button></div>':'')+'</div>'}
+
 function newInviteModal(){const w=modal('<h2>Invitar a Mi Red CERCA</h2><p>Generá una invitación para una persona de confianza.</p><label>Nombre</label><input id="invName" class="field"><label>Relación</label><input id="invRel" class="field" placeholder="Ej: hermana, amigo, pareja"><label>Información útil ante una emergencia</label><select id="invMed" class="select"><option value="never">No compartir</option><option value="emergency">Solo durante una emergencia</option><option value="always">Siempre autorizada</option></select><button id="makeInvite" class="btn primary block" style="margin-top:16px">Generar invitación</button>');$('makeInvite').onclick=async()=>{try{const d=await networkCall('create_invite',{display_name:$('invName').value.trim(),relationship:$('invRel').value.trim(),medical_access:$('invMed').value});const code=d.code||d.invite_code||d.invitation?.code||'';w.innerHTML='<div class="modal"><h2>Invitación creada</h2><p>Compartí este código con la persona:</p><div class="countdown" style="font-size:44px;color:var(--teal)">'+esc(code||'Creada')+'</div><button id="closeInvite" class="btn primary block">Listo</button></div>';$('closeInvite').onclick=()=>{w.remove();refreshAll()}}catch(e){toast(e.message,'error')}}}
 function acceptInviteModal(){const w=modal('<h2>Unirme a una Red CERCA</h2><p>Ingresá el código que te compartieron.</p><input id="inviteCode" class="field" style="text-transform:uppercase" placeholder="CÓDIGO"><button id="acceptCode" class="btn primary block" style="margin-top:14px">Aceptar invitación</button>');$('acceptCode').onclick=async()=>{try{await networkCall('accept_code',{code:$('inviteCode').value.trim().toUpperCase()});w.remove();toast('Ya sos parte de esa Red CERCA.');refreshAll()}catch(e){toast(e.message,'error')}}}
 async function removeLink(id){if(!confirm('¿Quitar a esta persona de tu Red CERCA?'))return;try{await networkCall('remove_link',{link_id:id});toast('Contacto eliminado de la red.');refreshAll()}catch(e){toast(e.message,'error')}}
+async function setMedicalAccess(id,value){try{await networkCall('set_medical_access',{link_id:id,medical_access:value});toast('Permiso actualizado.');await loadNetwork();renderBelow()}catch(e){toast(e.message,'error');refreshAll()}}
 
 async function fetchMedical(){try{const uid=S.user.id;const d=await request('/rest/v1/medical_profiles?user_id=eq.'+encodeURIComponent(uid)+'&select=*');return Array.isArray(d)?d[0]||null:d}catch{return null}}
 async function renderInfo(el){
@@ -115,10 +143,30 @@ function renderAlerts(el){
   const alerts=networkCollections().alerts;
   el.innerHTML='<div class="sectionHead"><div><h2>Alertas de Mi Red</h2><p>Emergencias activas de las personas vinculadas.</p></div></div><div class="list">'+(alerts.length?alerts.map(alertCard).join(''):'<div class="empty">No hay alertas activas en este momento.</div>')+'</div>';
   el.querySelectorAll('[data-alert]').forEach(b=>b.onclick=()=>openAlert(b.dataset.alert));
+  el.querySelectorAll('[data-alert-info]').forEach(b=>b.onclick=()=>openAlertInfo(b.dataset.alertInfo));
 }
-function alertCard(a){const id=a.id||a.emergency_id||'';const name=a.person_name||a.full_name||'Contacto CERCA';const lat=first(a,'latitude','lat'),lon=first(a,'longitude','lon','lng');return'<div class="item"><div class="itemTop"><div><h3>🚨 '+esc(name)+' necesita ayuda</h3><p>'+(lat!=null&&lon!=null?'Ubicación disponible y actualizable.':'Esperando ubicación…')+'</p></div><span class="badge red">SOS ACTIVO</span></div><div class="itemActions"><button class="btn danger sm" data-alert="'+esc(id)+'">Ver emergencia</button></div></div>'}
+
+function alertCard(a){const id=a.id||a.emergency_id||'';const name=a.person_name||a.full_name||'Contacto CERCA';const lat=first(a,'latitude','lat'),lon=first(a,'longitude','lon','lng'),med=a.medical_access||'never';return'<div class="item"><div class="itemTop"><div><h3>🚨 '+esc(name)+' necesita ayuda</h3><p>'+(lat!=null&&lon!=null?'Ubicación disponible y actualizable.':'Esperando ubicación…')+'</p></div><span class="badge red">SOS ACTIVO</span></div><div class="itemActions"><button class="btn danger sm" data-alert="'+esc(id)+'">Ver emergencia</button>'+(med!=='never'&&a.owner_user_id?'<button class="btn light sm" data-alert-info="'+esc(id)+'">Información útil</button>':'')+'</div></div>'}
+
 async function openAlert(id){await loadNetwork();const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id))||networkCollections().alerts[0];if(!a)return toast('La alerta ya no está activa.');S.currentAlert=a;try{await networkCall('emergency_seen',{emergency_id:a.id||a.emergency_id})}catch{}const lat=+first(a,'latitude','lat'),lon=+first(a,'longitude','lon','lng');const name=a.person_name||a.full_name||'Contacto CERCA';$('mapTitle').textContent='🚨 '+name+' necesita ayuda';$('mapMeta').textContent='Ubicación de la alerta · actualizada '+new Date().toLocaleTimeString('es-AR');$('liveBadge').textContent='SOS ACTIVO';$('liveBadge').className='badge red';$('mapFooterText').textContent='La posición se actualiza mientras la emergencia siga activa y el teléfono emisor pueda reportarla.';clearMapTrail();if(Number.isFinite(lat)&&Number.isFinite(lon))setMapPoint(lat,lon,{center:true});toast('Marcaste la alerta como vista.')}
 function syncCurrentAlertFromState(){if(!S.currentAlert)return;const id=S.currentAlert.id||S.currentAlert.emergency_id;const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id));if(!a)return;S.currentAlert=a;const lat=+first(a,'latitude','lat'),lon=+first(a,'longitude','lon','lng');if(Number.isFinite(lat)&&Number.isFinite(lon)){setMapPoint(lat,lon,{center:false});$('mapMeta').textContent='Actualizada '+new Date().toLocaleTimeString('es-AR')}}
+async function openAlertInfo(id){
+  await loadNetwork();
+  const a=networkCollections().alerts.find(x=>String(x.id||x.emergency_id)===String(id));
+  if(!a||!a.owner_user_id)return toast('La información ya no está disponible.','error');
+  try{
+    const d=await request(CFG.network+'?action=medical&owner_user_id='+encodeURIComponent(a.owner_user_id),{method:'GET'});
+    const m=d?.medical;if(!m)return toast('Todavía no hay información cargada.');
+    const rows=[
+      ['Nombre',m.full_name],['Nacimiento',m.birth_date],['Grupo sanguíneo',m.blood_type],
+      ['Alergias',m.allergies],['Medicaciones importantes',m.medications],['Condiciones',m.conditions],
+      ['Cobertura',m.health_provider],['N.º afiliado',m.member_number],
+      ['Contacto de emergencia',[m.emergency_contact_name,m.emergency_contact_phone].filter(Boolean).join(' ')],
+      ['Notas',m.notes]
+    ].filter(x=>String(x[1]||'').trim());
+    modal('<h2>Información útil · '+esc(a.person_name||'Contacto CERCA')+'</h2><div class="list">'+(rows.length?rows.map(x=>'<div class="item"><strong>'+esc(x[0])+'</strong><p>'+esc(x[1])+'</p></div>').join(''):'<div class="empty">Todavía no hay información cargada.</div>')+'</div><button class="btn primary block" style="margin-top:14px" onclick="this.closest(\'.modalWrap\').remove()">Cerrar</button>');
+  }catch(e){toast(e.message,'error')}
+}
 
 function renderProfile(el){
   const name=S.profile?.full_name||S.user?.user_metadata?.full_name||'—',phone=S.profile?.phone_e164||S.user?.user_metadata?.phone_e164||'—';
@@ -137,14 +185,18 @@ function renderBelow(){
 }
 async function refreshAll(){await loadNetwork();renderSide();renderBelow();syncCurrentAlertFromState()}
 function stopPolling(){if(S.poll){clearInterval(S.poll);S.poll=null}}
-function startPolling(){stopPolling();S.poll=setInterval(async()=>{const prev=S.lastIncomingId;await loadNetwork();const alerts=networkCollections().alerts;const firstId=String(alerts[0]?.id||alerts[0]?.emergency_id||'');if(firstId&&firstId!==prev){S.lastIncomingId=firstId;if(Notification.permission==='granted'&&document.visibilityState!=='visible'){new Notification('🚨 Alerta CERCA',{body:(alerts[0]?.person_name||'Una persona de tu Red CERCA')+' necesita ayuda.',icon:'/icon.svg',tag:firstId})}if(S.tab==='alerts')renderSide()}syncCurrentAlertFromState();renderBelow()},6000)}
+function startPolling(){stopPolling();S.poll=setInterval(async()=>{const prev=S.lastIncomingId;await loadNetwork();const alerts=networkCollections().alerts;const firstId=String(alerts[0]?.id||alerts[0]?.emergency_id||'');if(firstId&&firstId!==prev){S.lastIncomingId=firstId;if(Notification.permission==='granted'&&document.visibilityState!=='visible'){try{const reg=await navigator.serviceWorker?.ready;await reg?.showNotification('🚨 Alerta CERCA',{body:(alerts[0]?.person_name||'Una persona de tu Red CERCA')+' necesita ayuda.',icon:'/icon.svg',tag:firstId,data:{emergency_id:firstId}})}catch{}}if(S.tab==='alerts')renderSide()}syncCurrentAlertFromState();renderBelow()},6000)}
 navigator.serviceWorker?.addEventListener?.('message',e=>{if(e.data?.type==='open-alert'&&e.data.id)openAlert(e.data.id)});
 
 async function boot(){
-  setPill('Conectando…');sessionLoad();
+  setPill('Conectando…');
+  const recovery=recoveryFromHash();
+  if(recovery)sessionSave(recovery);else sessionLoad();
   if(!S.session){renderAuth('login');return}
   const u=await authMe();if(!u){renderAuth('login');return}
+  if(recovery){renderRecovery();setPill('Recuperar acceso');return}
   await Promise.all([loadProfile(),loadNetwork()]);
+  if(S.profile?.phone_e164){try{await networkCall('set_phone',{phone:S.profile.phone_e164})}catch{}}
   renderDashboard();
   if(S.activeEmergency){startTracking();const lat=+first(S.activeEmergency,'latitude','lat'),lon=+first(S.activeEmergency,'longitude','lon','lng');if(Number.isFinite(lat)&&Number.isFinite(lon))setMapPoint(lat,lon,{trail:true});$('mapTitle').textContent='Tu ubicación en vivo';$('liveBadge').textContent='EN VIVO'}
   const alertParam=new URLSearchParams(location.search).get('alert');if(alertParam)openAlert(alertParam);

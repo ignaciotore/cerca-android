@@ -1,4 +1,4 @@
-const CACHE='cerca-web-v6';
+const CACHE='cerca-web-v7';
 const STATIC=['/','/index.html','/styles.css','/app.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
 
 self.addEventListener('install',e=>{
@@ -14,6 +14,11 @@ self.addEventListener('fetch',e=>{
   if(r.method!=='GET')return;
   const u=new URL(r.url);
   if(u.origin!==location.origin)return;
+
+  if(u.pathname.startsWith('/api/')){
+    e.respondWith(fetch(r,{cache:'no-store'}));
+    return;
+  }
 
   if(r.mode==='navigate'){
     e.respondWith(fetch(r,{cache:'no-store'}).then(res=>{

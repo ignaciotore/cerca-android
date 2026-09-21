@@ -216,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         activationQueue = ActivationQueue(this)
         bindViews()
         installAccountPhoneUi()
-        if (BuildConfig.HEALTH_FEATURES) installSmsMedicalOptions() else installSmsMedicalPlaceholders()
+        installSmsMedicalOptions()
         installFamilyTestUi()
         registerSmsReceivers()
         ContextCompat.registerReceiver(
@@ -446,7 +446,7 @@ class MainActivity : AppCompatActivity() {
         val anchor = findViewById<Button>(anchorId)
         val parent = anchor.parent as LinearLayout
         val box = CheckBox(this).apply {
-            text = "Enviar también mi información útil ante una emergencia a este contacto"
+            text = "Incluir mi información útil ante una emergencia en el SMS a este contacto"
             textSize = 14f
             setTextColor(android.graphics.Color.parseColor("#34454A"))
             visibility = View.GONE
@@ -461,8 +461,8 @@ class MainActivity : AppCompatActivity() {
         )
         box.setOnCheckedChangeListener { _, checked ->
             contactPrefs().edit().putBoolean("sms" + index + "ShareMedical", checked).apply()
-            if (checked && medicalShareUrl() == null) {
-                toast("Quedó marcado. Guardá primero tu información útil ante una emergencia.")
+            if (checked && emergencyInfoText().isBlank()) {
+                toast("Quedó marcado. Cargá tu información útil ante una emergencia para incluirla en el SMS.")
             }
         }
         return box
@@ -474,11 +474,17 @@ class MainActivity : AppCompatActivity() {
         val phones = listOf(sms1Phone, sms2Phone, sms3Phone, sms4Phone)
         boxes.forEachIndexed { i, box ->
             val hasContact = phones[i].isNotBlank()
-            box.visibility = View.GONE
+            box.visibility = if (hasContact) View.VISIBLE else View.GONE
             val wanted = hasContact && contactPrefs().getBoolean("sms" + (i + 1) + "ShareMedical", false)
             if (box.isChecked != wanted) box.isChecked = wanted
         }
     }
+
+    private fun emergencyInfoText(): String =
+        getSharedPreferences("cerca_emergency_info", MODE_PRIVATE)
+            .getString("free_text", "")
+            .orEmpty()
+            .trim()
 
     private fun medicalShareUrl(): String? {
         val prefs = getSharedPreferences("cerca_medical_nfc", MODE_PRIVATE)
@@ -1767,10 +1773,10 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
     private data class SmsRecipient(val name: String, val phone: String, val shareMedical: Boolean)
 
     private fun savedSmsContacts(): List<SmsRecipient> = listOf(
-        SmsRecipient(sms1Name, sms1Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms1ShareMedical", false)),
-        SmsRecipient(sms2Name, sms2Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms2ShareMedical", false)),
-        SmsRecipient(sms3Name, sms3Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms3ShareMedical", false)),
-        SmsRecipient(sms4Name, sms4Phone, BuildConfig.HEALTH_FEATURES && contactPrefs().getBoolean("sms4ShareMedical", false))
+        SmsRecipient(sms1Name, sms1Phone, contactPrefs().getBoolean("sms1ShareMedical", false)),
+        SmsRecipient(sms2Name, sms2Phone, contactPrefs().getBoolean("sms2ShareMedical", false)),
+        SmsRecipient(sms3Name, sms3Phone, contactPrefs().getBoolean("sms3ShareMedical", false)),
+        SmsRecipient(sms4Name, sms4Phone, contactPrefs().getBoolean("sms4ShareMedical", false))
     ).filter { it.phone.isNotBlank() }.distinctBy { it.phone }
 
     @Suppress("DEPRECATION")
@@ -1814,10 +1820,18 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
             deliveredSmsParts = 0
             var requestCode = (currentSmsBatch xor (currentSmsBatch ushr 32)).toInt()
 
+            val emergencyInfo = emergencyInfoText()
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(320)
             contacts.forEach { recipient ->
                 val destination = normalizePhone(recipient.phone)
                 if (destination.isBlank()) return@forEach
-                val recipientMessage = message
+                val recipientMessage = if (recipient.shareMedical && emergencyInfo.isNotBlank()) {
+                    message + "\nInfo util: " + emergencyInfo
+                } else {
+                    message
+                }
                 val parts = manager.divideMessage(recipientMessage)
                 expectedSmsParts += parts.size
                 val sentIntents = ArrayList<PendingIntent>()

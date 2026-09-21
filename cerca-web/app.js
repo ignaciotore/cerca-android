@@ -7,7 +7,7 @@ const SESSION_KEY='cerca_web_session_v1';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 const app=$('app');
-let S={session:null,user:null,profile:null,network:null,activeEmergency:null,watchId:null,map:null,marker:null,trail:null,trailPoints:[],poll:null,currentAlert:null,lastIncomingId:'',tab:'home'};
+let S={session:null,user:null,profile:null,entitlement:null,enterprise:null,activeEmergency:null,watchId:null,map:null,marker:null,trail:null,trailPoints:[],poll:null,currentAlert:null,lastIncomingId:'',tab:'home'};
 
 function sessionLoad(){try{const x=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');if(x&&x.access_token&&x.refresh_token)S.session=x}catch{}}
 function sessionSave(x){S.session=x;localStorage.setItem(SESSION_KEY,JSON.stringify(x))}
@@ -72,12 +72,33 @@ async function loadProfile(){
   const uid=S.user?.id;if(!uid)return null;
   try{const d=await request('/rest/v1/profiles?user_id=eq.'+encodeURIComponent(uid)+'&select=full_name,email,trial_started_at,trial_ends_at,phone_e164');S.profile=Array.isArray(d)?d[0]||null:d;return S.profile}catch{return null}
 }
+async function loadEntitlement(){
+  const uid=S.user?.id;if(!uid)return null;
+  try{const d=await request('/rest/v1/entitlements?user_id=eq.'+encodeURIComponent(uid)+'&select=subscription_active,expires_at');S.entitlement=Array.isArray(d)?d[0]||null:d;return S.entitlement}catch{S.entitlement=null;return null}
+}
+async function enterpriseCall(action,body=null,method='POST'){return request('/functions/v1/cerca-enterprise?action='+encodeURIComponent(action),{method,body:body||undefined})}
+async function loadEnterprise(){try{S.enterprise=await enterpriseCall('state',null,'GET');return S.enterprise}catch{S.enterprise={enterprise:false};return S.enterprise}}
+function planLabel(){
+  const now=Date.now(),sub=S.entitlement;
+  const subEnd=sub?.expires_at?Date.parse(sub.expires_at):0;
+  if(sub?.subscription_active&&subEnd>now)return'Premium';
+  const trialEnd=S.profile?.trial_ends_at?Date.parse(S.profile.trial_ends_at):0;
+  if(trialEnd>now)return'Prueba activa';
+  if(S.enterprise?.enterprise_access_active)return'Empresa';
+  return'Free';
+}
+function applyEnterpriseBrand(){
+  const org=S.enterprise?.organization;if(!S.enterprise?.enterprise||!org)return;
+  if(/^#[0-9a-f]{6}$/i.test(org.primary_color||''))document.documentElement.style.setProperty('--teal',org.primary_color);
+  if(/^#[0-9a-f]{6}$/i.test(org.secondary_color||''))document.documentElement.style.setProperty('--mint',org.secondary_color);
+}
 async function networkCall(action,body=null,method='POST'){const q='?action='+encodeURIComponent(action);return request(CFG.network+q,{method,body:body||undefined})}
 async function loadNetwork(){try{S.network=await networkCall('state',null,'GET');S.activeEmergency=S.network?.active_emergency||null;return S.network}catch(e){console.warn(e);return null}}
 
 function renderDashboard(){
   const name=S.profile?.full_name||S.user?.user_metadata?.full_name||S.user?.email?.split('@')[0]||'';
-  app.innerHTML='<div class="dash"><section class="card panel"><div class="hello"><div><h1>Hola, '+esc(name)+'</h1><p>Tu Red CERCA está lista para acompañarte.</p></div><button id="profileBtn" class="btn light sm">Mi cuenta</button></div><nav class="nav"><button data-tab="home" class="active">Inicio</button><button data-tab="network">Mi Red</button><button data-tab="info">Información útil</button><button data-tab="alerts">Alertas</button></nav><div id="sideContent"></div></section><section class="card mapCard"><div class="mapHeader"><div><strong id="mapTitle">Tu ubicación</strong><div id="mapMeta" class="mapMeta">Todavía no compartís ubicación.</div></div><span id="liveBadge" class="badge">En espera</span></div><div id="map"></div><div class="mapFooter"><span id="mapFooterText" class="mapMeta">El mapa se activa al pedir ayuda o abrir una alerta.</span><div class="actions"><button id="centerMapBtn" class="btn light sm">Centrar</button><a id="mapsLink" class="btn light sm hidden" target="_blank" rel="noopener">Abrir mapa</a></div></div></section><section class="card panel" style="grid-column:1/-1"><div id="belowContent"></div></section></div>';
+  const org=S.enterprise?.organization;const orgLine=S.enterprise?.enterprise&&org?'<div class="infoNote" style="margin-bottom:12px"><strong>'+esc(org.name)+'</strong> · '+(S.enterprise.role==='admin'?'Administrador':'CERCA Empresas')+'</div>':'';
+  app.innerHTML='<div class="dash"><section class="card panel"><div class="hello"><div><h1>Hola, '+esc(name)+'</h1><p>Tu Red CERCA está lista para acompañarte.</p></div><button id="profileBtn" class="btn light sm">Mi cuenta</button></div>'+orgLine+'<nav class="nav"><button data-tab="home" class="active">Inicio</button><button data-tab="network">Mi Red</button><button data-tab="info">Información útil</button><button data-tab="alerts">Alertas</button><button data-tab="enterprise">Empresa</button></nav><div id="sideContent"></div></section><section class="card mapCard"><div class="mapHeader"><div><strong id="mapTitle">Tu ubicación</strong><div id="mapMeta" class="mapMeta">Todavía no compartís ubicación.</div></div><span id="liveBadge" class="badge">En espera</span></div><div id="map"></div><div class="mapFooter"><span id="mapFooterText" class="mapMeta">El mapa se activa al pedir ayuda o abrir una alerta.</span><div class="actions"><button id="centerMapBtn" class="btn light sm">Centrar</button><a id="mapsLink" class="btn light sm hidden" target="_blank" rel="noopener">Abrir mapa</a></div></div></section><section class="card panel" style="grid-column:1/-1"><div id="belowContent"></div></section></div>';
   document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));renderSide()});
   $('profileBtn').onclick=()=>{S.tab='profile';document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));renderSide()};
   $('centerMapBtn').onclick=centerMap;
@@ -94,6 +115,7 @@ function renderSide(){
   if(S.tab==='network')return renderNetwork(el);
   if(S.tab==='info')return renderInfo(el);
   if(S.tab==='alerts')return renderAlerts(el);
+  if(S.tab==='enterprise')return renderEnterprise(el);
   if(S.tab==='profile')return renderProfile(el);
 }
 function renderHome(el){
@@ -168,9 +190,31 @@ async function openAlertInfo(id){
   }catch(e){toast(e.message,'error')}
 }
 
+async function renderEnterprise(el){
+  const e=S.enterprise||{enterprise:false};
+  if(!e.enterprise){
+    el.innerHTML='<div class="sectionHead"><div><h2>CERCA Empresas</h2><p>Usá un código de invitación para vincular tu cuenta.</p></div></div><div class="infoNote">Si tu empresa te invitó, ingresá el código de 8 caracteres. Tu cuenta personal se mantiene y pasa a usar la identidad de la organización.</div><label>Código de empresa</label><input id="enterpriseCode" class="field" maxlength="8" style="text-transform:uppercase" placeholder="XXXXXXXX"><button id="enterpriseJoinBtn" class="btn primary block" style="margin-top:12px">Unirme a una empresa</button>';
+    $('enterpriseJoinBtn').onclick=joinEnterprise;return;
+  }
+  const o=e.organization||{},isAdmin=e.role==='admin';
+  el.innerHTML='<div class="sectionHead"><div><h2>'+esc(o.name||'CERCA Empresas')+'</h2><p>'+(isAdmin?'Administración empresarial':'Cuenta empresarial')+'</p></div><span class="badge">'+esc((e.role||'member').toUpperCase())+'</span></div><div class="profileGrid"><div class="profileBox"><small>Miembros</small><strong>'+Number(e.member_count||0)+'</strong></div><div class="profileBox"><small>Acceso</small><strong>'+(e.enterprise_access_active?'Activo':'Según plan')+'</strong></div></div><div id="enterpriseAdminArea" style="margin-top:14px">'+(isAdmin?'<button id="enterpriseInviteBtn" class="btn primary block">Generar invitación empresarial</button><div id="enterpriseMembers" class="list" style="margin-top:12px"><div class="empty">Cargando miembros…</div></div>':'<div class="infoNote">Tu cuenta está vinculada a '+esc(o.name||'tu empresa')+'.</div>')+'</div>';
+  if(isAdmin){$('enterpriseInviteBtn').onclick=createEnterpriseInvite;loadEnterpriseMembers()}
+}
+async function joinEnterprise(){
+  const code=$('enterpriseCode').value.trim().toUpperCase();if(code.length!==8)return toast('Ingresá un código válido.','error');
+  try{S.enterprise=await enterpriseCall('join',{code});applyEnterpriseBrand();toast('Cuenta vinculada a '+esc(S.enterprise?.organization?.name||'tu empresa')+'.');renderSide();renderDashboard()}catch(e){toast(e.message,'error')}
+}
+async function createEnterpriseInvite(){
+  try{const d=await enterpriseCall('create_invite',{max_uses:50});const code=d?.invite?.code||'';if(!code)throw new Error('No se generó la invitación.');const org=S.enterprise?.organization?.name||'tu empresa';const text='Te invito a usar CERCA con '+org+'. Instalá CERCA, iniciá tu cuenta y en Empresa ingresá el código: '+code;if(navigator.share){try{await navigator.share({title:'CERCA Empresas',text});return}catch(e){if(e?.name==='AbortError')return}}try{await navigator.clipboard.writeText(text);toast('Invitación copiada.')}catch{modal('<h2>Invitación empresarial</h2><p>'+esc(text)+'</p>')}}catch(e){toast(e.message,'error')}
+}
+async function loadEnterpriseMembers(){
+  const box=$('enterpriseMembers');if(!box)return;
+  try{const d=await enterpriseCall('members',null,'GET');const members=Array.isArray(d?.members)?d.members:[];box.innerHTML=members.length?members.map(m=>'<div class="item"><div class="itemTop"><div><h3>'+esc(m.full_name||m.email||'Usuario')+'</h3><p>'+esc(m.email||'')+'</p></div><span class="badge">'+esc((m.role||'member').toUpperCase())+'</span></div></div>').join(''):'<div class="empty">Todavía no hay miembros.</div>'}catch(e){box.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}
+}
 function renderProfile(el){
   const name=S.profile?.full_name||S.user?.user_metadata?.full_name||'—',phone=S.profile?.phone_e164||S.user?.user_metadata?.phone_e164||'—';
-  el.innerHTML='<div class="sectionHead"><div><h2>Mi cuenta</h2><p>Datos de tu cuenta CERCA.</p></div></div><div class="profileGrid"><div class="profileBox"><small>Nombre</small><strong>'+esc(name)+'</strong></div><div class="profileBox"><small>Email</small><strong>'+esc(S.user?.email||'—')+'</strong></div><div class="profileBox"><small>Celular</small><strong>'+esc(phone)+'</strong></div><div class="profileBox"><small>Versión</small><strong>Web / PWA</strong></div></div><button id="notifyBtn" class="btn light block" style="margin-top:14px">Activar notificaciones</button><button id="logoutBtn" class="btn dark block" style="margin-top:8px">Cerrar sesión</button>';
+  const org=S.enterprise?.enterprise?S.enterprise?.organization?.name:'Individual';
+  el.innerHTML='<div class="sectionHead"><div><h2>Mi cuenta</h2><p>Datos de tu cuenta CERCA.</p></div></div><div class="profileGrid"><div class="profileBox"><small>Nombre</small><strong>'+esc(name)+'</strong></div><div class="profileBox"><small>Email</small><strong>'+esc(S.user?.email||'—')+'</strong></div><div class="profileBox"><small>Celular</small><strong>'+esc(phone)+'</strong></div><div class="profileBox"><small>Plan</small><strong>'+esc(planLabel())+'</strong></div><div class="profileBox"><small>Cuenta</small><strong>'+esc(org||'Individual')+'</strong></div><div class="profileBox"><small>Versión</small><strong>Web / PWA</strong></div></div><button id="notifyBtn" class="btn light block" style="margin-top:14px">Activar notificaciones</button><button id="logoutBtn" class="btn dark block" style="margin-top:8px">Cerrar sesión</button>';
   $('logoutBtn').onclick=logout;$('notifyBtn').onclick=enableNotifications;
 }
 async function enableNotifications(){if(!('Notification'in window))return toast('Este navegador no ofrece notificaciones web.','error');const p=await Notification.requestPermission();if(p==='granted'){toast('Notificaciones activadas.');await tryWebPush()}else toast('No se habilitaron las notificaciones.','error')}
@@ -195,8 +239,9 @@ async function boot(){
   if(!S.session){renderAuth('login');return}
   const u=await authMe();if(!u){renderAuth('login');return}
   if(recovery){renderRecovery();setPill('Recuperar acceso');return}
-  await Promise.all([loadProfile(),loadNetwork()]);
+  await Promise.all([loadProfile(),loadEntitlement(),loadNetwork(),loadEnterprise()]);
   if(S.profile?.phone_e164){try{await networkCall('set_phone',{phone:S.profile.phone_e164})}catch{}}
+  applyEnterpriseBrand();
   renderDashboard();
   if(S.activeEmergency){startTracking();const lat=+first(S.activeEmergency,'latitude','lat'),lon=+first(S.activeEmergency,'longitude','lon','lng');if(Number.isFinite(lat)&&Number.isFinite(lon))setMapPoint(lat,lon,{trail:true});$('mapTitle').textContent='Tu ubicación en vivo';$('liveBadge').textContent='EN VIVO'}
   const alertParam=new URLSearchParams(location.search).get('alert');if(alertParam)openAlert(alertParam);

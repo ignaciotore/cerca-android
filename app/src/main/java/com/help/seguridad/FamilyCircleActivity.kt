@@ -65,12 +65,64 @@ class FamilyCircleActivity : AppCompatActivity() {
                 val fresh=if(api.isSessionNearExpiry(s)) api.refreshSession(s) else s
                 session=fresh; sessionStore.save(fresh)
                 val state=api.fetchNetworkState(fresh)
-                runOnUiThread { serverState=state; render() }
+                runOnUiThread { applyServerContacts(state); serverState=state; render() }
             } catch(e:Exception){ runOnUiThread { serverState=JSONObject(); render(); toast("No pudimos sincronizar la Red CERCA. Tus contactos siguen guardados en el teléfono.") } }
         }
     }
 
     private fun renderLoading(){ root.removeAllViews(); root.addView(title("Tu Red CERCA",30f)); root.addView(body("Cargando tus contactos…")) }
+    private fun applyServerContacts(state: JSONObject) {
+        val arr = state.optJSONArray("contacts") ?: state.optJSONArray("outgoing") ?: return
+        if (arr.length() == 0) return
+        val p = prefs()
+        val oldShare = mutableMapOf<String, Boolean>()
+        for (i in 1..4) {
+            val oldPhone = p.getString("sms"+i+"Phone","").orEmpty()
+            val key = phoneKey(oldPhone)
+            if (key.isNotBlank()) oldShare[key] = p.getBoolean("sms"+i+"ShareMedical", false)
+        }
+        val rows = mutableListOf<JSONObject>()
+        val seen = mutableSetOf<String>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val phone = o.optString("phone_e164").ifBlank { o.optString("phone") }
+            val key = phoneKey(phone)
+            if (key.isBlank() || !seen.add(key)) continue
+            rows += o
+            if (rows.size >= 4) break
+        }
+        if (rows.isEmpty()) return
+        val e = p.edit()
+        for (i in 1..4) {
+            e.putString("sms"+i+"Name","")
+                .putString("sms"+i+"Phone","")
+                .putString("sms"+i+"MedicalAccess","never")
+                .putBoolean("sms"+i+"ShareMedical",false)
+        }
+        var callName = ""
+        var callPhone = ""
+        rows.forEachIndexed { index, o ->
+            val slot=index+1
+            val phone=o.optString("phone_e164").ifBlank{o.optString("phone")}
+            val name=o.optString("name").ifBlank{o.optString("display_name").ifBlank{"Contacto"}}
+            val access=o.optString("medical_access","never").ifBlank{"never"}
+            e.putString("sms"+slot+"Name",name)
+                .putString("sms"+slot+"Phone",phone)
+                .putString("sms"+slot+"MedicalAccess",access)
+                .putBoolean("sms"+slot+"ShareMedical",oldShare[phoneKey(phone)] ?: false)
+            if(o.optBoolean("call_enabled",false) && callPhone.isBlank()){
+                callName=name; callPhone=phone
+            }
+        }
+        if(callPhone.isBlank()){
+            val oldKey=phoneKey(p.getString("callPhone","").orEmpty())
+            val chosen=rows.firstOrNull{phoneKey(it.optString("phone_e164").ifBlank{it.optString("phone")})==oldKey} ?: rows.first()
+            callPhone=chosen.optString("phone_e164").ifBlank{chosen.optString("phone")}
+            callName=chosen.optString("name").ifBlank{chosen.optString("display_name").ifBlank{"Contacto de llamada"}}
+        }
+        e.putString("callName",callName).putString("callPhone",callPhone).apply()
+    }
+
 
     private fun render(){
         root.removeAllViews()

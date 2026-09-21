@@ -8,3 +8,19 @@
 .cercaMapPin span{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;left:8px;top:8px}
 @media(max-width:880px){.alertMapCard #map{height:390px}}
 @media(max-width:600px){.alertMapCard #map{height:340px}.alertMapCard .mapFooter{align-items:flex-start}}
+
+.sosButton{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+  touch-action:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.sosButton.pressing{transform:scale(.96);box-shadow:0 10px 30px rgba(216,77,77,.28),0 0 0 14px rgba(216,77,77,.08)}
+.enterpriseBrand{display:flex;align-items:center;gap:12px;padding:13px 14px;margin-bottom:14px;border:1px solid var(--line);border-radius:18px;background:var(--mint)}
+.enterpriseLogo{width:58px;height:58px;flex:0 0 58px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:var(--shadow2)}
+.enterpriseLogo img{width:100%;height:100%;object-fit:contain;padding:5px}
+.enterpriseBrandCopy{min-width:0}
+.enterpriseBrandCopy strong{display:block;font-size:18px;line-height:1.15;color:var(--teal);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.enterpriseBrandCopy span{display:block;margin-top:4px;font-size:12px;font-weight:800;color:var(--teal);opacity:.82}
+@media(max-width:600px){.enterpriseBrand{padding:11px 12px}.enterpriseLogo{width:52px;height:52px;flex-basis:52px}.enterpriseBrandCopy strong{font-size:17px}}

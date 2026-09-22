@@ -306,13 +306,23 @@ function mergeNetworkContacts(items){
   for(const x of (items||[])){
     const k=contactKey(x);
     if(!k||k==='n:')continue;
+    const linkIds=[...(x.__linkIds||[])];
+    const contactIds=[...(x.__contactIds||[])];
+    const rawId=x.link_id||x.id||'';
+    if(rawId){
+      if(x.__kind==='link')linkIds.push(rawId);
+      else if(x.__kind==='synced')contactIds.push(rawId);
+    }
     const prev=m.get(k);
     if(!prev){
-      const copy={...x,__ids:[x.id||x.link_id].filter(Boolean)};
+      const copy={...x,__linkIds:[...new Set(linkIds)],__contactIds:[...new Set(contactIds)]};
+      delete copy.__kind;
       m.set(k,copy);
     }else{
-      prev.__ids=[...(prev.__ids||[]),x.id||x.link_id].filter(Boolean);
+      prev.__linkIds=[...new Set([...(prev.__linkIds||[]),...linkIds])];
+      prev.__contactIds=[...new Set([...(prev.__contactIds||[]),...contactIds])];
       for(const [key,val] of Object.entries(x)){
+        if(key==='__kind'||key==='__linkIds'||key==='__contactIds')continue;
         if((prev[key]===undefined||prev[key]===null||prev[key]==='')&&val!==undefined&&val!==null&&val!=='')prev[key]=val;
       }
       if(x.call_enabled===true)prev.call_enabled=true;
@@ -326,9 +336,10 @@ function mergeNetworkContacts(items){
 }
 function networkCollections(){
   const n=S.network||{};
-  const synced=mergeNetworkContacts(arr(n,'contacts','outgoing'));
-  const linkedRaw=arr(n,'links','network_links','members');
-  const linked=mergeNetworkContacts([...linkedRaw,...synced]);
+  const syncedRaw=arr(n,'contacts','outgoing').map(x=>({...x,__kind:'synced'}));
+  const linkedRaw=arr(n,'links','network_links','members').map(x=>({...x,__kind:'link'}));
+  const synced=mergeNetworkContacts(syncedRaw);
+  const linked=mergeNetworkContacts([...linkedRaw,...syncedRaw]);
   return{
     links:linked,
     syncedContacts:synced,
@@ -354,7 +365,7 @@ function syncedRoleFor(x){
   return{
     call:isCall,
     sms:!isCall&&hasSms,
-    cerca:pool.some(c=>c.has_cerca===true)||!!(x.id||x.link_id||x.owner_user_id||x.target_user_id)
+    cerca:(x.__linkIds||[]).length>0||pool.some(c=>c.has_cerca===true)||!!(x.owner_user_id||x.target_user_id)
   }
 }
 function roleBadges(x){
@@ -374,20 +385,27 @@ function renderNetwork(el){
   el.innerHTML='<div class="sectionHead"><div><h2>Mi Red CERCA</h2><p>Configurá 1 contacto de llamada y el resto para SMS. Si usan CERCA, además reciben la alerta dentro de la app.</p></div><div class="networkAddActions"><button id="addContactBtn" class="btn primary sm">+ Agregar contacto</button><button id="inviteCercaBtn" class="btn light sm">Invitar a CERCA</button></div></div><div class="list">'+(c.links.length?c.links.map(linkCard).join(''):'<div class="empty">Todavía no hay contactos configurados.</div>')+'</div><div style="margin-top:16px"><button id="acceptInvite" class="btn light block">Tengo un código de invitación</button></div>';
   $('addContactBtn').onclick=addContactModal;$('inviteCercaBtn').onclick=newInviteModal;$('acceptInvite').onclick=acceptInviteModal;
   el.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>removeLink(b.dataset.remove));
+  el.querySelectorAll('[data-remove-contact]').forEach(b=>b.onclick=()=>removeSyncedContact(b.dataset.removeContact));
   el.querySelectorAll('[data-medical]').forEach(s=>s.onchange=()=>setMedicalAccess(s.dataset.medical,s.value));
   el.querySelectorAll('[data-make-call]').forEach(b=>b.onclick=()=>makeCallContact(b.dataset.makeCall));
 }
 
 function linkCard(x){
-  const ids=(x.__ids&&x.__ids.length?x.__ids:[x.id||x.link_id]).filter(Boolean);
-  const id=ids.join(',');
+  const linkIds=(x.__linkIds||[]).filter(Boolean);
+  const linkId=linkIds.join(',');
   const n=x.display_name||x.full_name||x.name||x.email||'Contacto CERCA';
   const rel=x.relationship||x.relation||'Red CERCA';
   const med=x.medical_access||'never';
   const phone=first(x,'phone_e164','phone','target_phone','contact_phone');
   const roles=syncedRoleFor(x);
   const roleAction=phone&&!roles.call?'<button class="btn light sm" data-make-call="'+esc(phone)+'">Usar para llamada</button>':'';
-  return'<div class="item"><div class="itemTop"><div><h3>'+esc(n)+'</h3><p>'+esc(rel)+(phone?' · '+esc(phone):'')+'</p>'+roleBadges(x)+'</div><span class="badge">'+(med==='never'?'Info privada':med==='emergency'?'Solo en emergencia':'Info autorizada')+'</span></div>'+(id?'<label style="margin-top:10px">Información útil</label><select class="select" data-medical="'+esc(id)+'"><option value="never" '+(med==='never'?'selected':'')+'>No compartir</option><option value="emergency" '+(med==='emergency'?'selected':'')+'>Solo durante una emergencia</option><option value="always" '+(med==='always'?'selected':'')+'>Siempre autorizada</option></select>':'')+'<div class="itemActions">'+roleAction+(id?'<button class="btn light sm" data-remove="'+esc(id)+'">Quitar de la red</button>':'')+'</div></div>'
+  const medicalBlock=roles.cerca&&linkId
+    ?'<label style="margin-top:10px">Información útil</label><select class="select" data-medical="'+esc(linkId)+'"><option value="never" '+(med==='never'?'selected':'')+'>No compartir</option><option value="emergency" '+(med==='emergency'?'selected':'')+'>Solo durante una emergencia</option><option value="always" '+(med==='always'?'selected':'')+'>Siempre autorizada</option></select>'
+    :'';
+  const removeAction=linkId
+    ?'<button class="btn light sm" data-remove="'+esc(linkId)+'">Quitar de la red</button>'
+    :(phone?'<button class="btn light sm" data-remove-contact="'+esc(phone)+'">Quitar contacto</button>':'');
+  return'<div class="item"><div class="itemTop"><div><h3>'+esc(n)+'</h3><p>'+esc(rel)+(phone?' · '+esc(phone):'')+'</p>'+roleBadges(x)+'</div>'+(roles.cerca?'<span class="badge">'+(med==='never'?'Info privada':med==='emergency'?'Solo en emergencia':'Info autorizada')+'</span>':'')+'</div>'+medicalBlock+'<div class="itemActions">'+roleAction+removeAction+'</div></div>'
 }
 
 function syncedPayload(){
@@ -446,6 +464,17 @@ async function makeCallContact(phone){
   });
   if(!found)return toast('No encontré ese contacto.','error');
   try{await saveSyncedContacts(list);toast('Contacto de llamada actualizado.')}catch(e){toast(e.message,'error')}
+}
+
+async function removeSyncedContact(phone){
+  if(!confirm('¿Quitar este contacto de tu configuración de emergencia?'))return;
+  const key=phoneKey(phone);
+  const list=syncedPayload().filter(x=>phoneKey(x.phone)!==key);
+  if(list.length&&!list.some(x=>x.call_enabled)){
+    list[0].call_enabled=true;
+    list[0].sms_enabled=false;
+  }
+  try{await saveSyncedContacts(list);toast('Contacto eliminado.')}catch(e){toast(e.message,'error')}
 }
 
 function newInviteModal(){const w=modal('<h2>Invitar a Mi Red CERCA</h2><p>Generá una invitación para una persona de confianza.</p><label>Nombre</label><input id="invName" class="field"><label>Relación</label><input id="invRel" class="field" placeholder="Ej: hermana, amigo, pareja"><label>Información útil ante una emergencia</label><select id="invMed" class="select"><option value="never">No compartir</option><option value="emergency">Solo durante una emergencia</option><option value="always">Siempre autorizada</option></select><button id="makeInvite" class="btn primary block" style="margin-top:16px">Generar invitación</button>');$('makeInvite').onclick=async()=>{try{const d=await networkCall('create_invite',{display_name:$('invName').value.trim(),relationship:$('invRel').value.trim(),medical_access:$('invMed').value});const code=d.code||d.invite_code||d.invitation?.code||'';w.innerHTML='<div class="modal"><h2>Invitación creada</h2><p>Compartí este código con la persona:</p><div class="countdown" style="font-size:44px;color:var(--teal)">'+esc(code||'Creada')+'</div><button id="closeInvite" class="btn primary block">Listo</button></div>';$('closeInvite').onclick=()=>{w.remove();refreshAll()}}catch(e){toast(e.message,'error')}}}

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.telecom.TelecomManager
 import android.webkit.GeolocationPermissions
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -42,31 +43,17 @@ class WebAppActivity : AppCompatActivity() {
             settings.databaseEnabled = true
             settings.setGeolocationEnabled(true)
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/1"
+            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/2"
             addJavascriptInterface(CercaNativeBridge(), "CercaNative")
             webChromeClient = object : WebChromeClient() {
-                override fun onGeolocationPermissionsShowPrompt(
-                    origin: String?,
-                    callback: GeolocationPermissions.Callback?
-                ) {
+                override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
                     if (origin == null || callback == null) return
-                    if (ContextCompat.checkSelfPermission(
-                            this@WebAppActivity,
-                            Manifest.permission.ACCESS_FINE_LOCATION
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
+                    if (ContextCompat.checkSelfPermission(this@WebAppActivity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                         callback.invoke(origin, true, false)
                     } else {
                         pendingGeoOrigin = origin
                         pendingGeoCallback = callback
-                        ActivityCompat.requestPermissions(
-                            this@WebAppActivity,
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            ),
-                            REQ_LOCATION
-                        )
+                        ActivityCompat.requestPermissions(this@WebAppActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), REQ_LOCATION)
                     }
                 }
             }
@@ -75,7 +62,6 @@ class WebAppActivity : AppCompatActivity() {
                     val uri = request?.url ?: return false
                     return handleNavigation(uri)
                 }
-
                 @Deprecated("Deprecated in Java")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                     val uri = url?.let(Uri::parse) ?: return false
@@ -86,18 +72,30 @@ class WebAppActivity : AppCompatActivity() {
 
         setContentView(webView)
         maybeExplainCallPermission()
-        loadIntentTarget(intent)
+        handleIncomingIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        loadIntentTarget(intent)
+        handleIncomingIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
         NativePushRegistrar.registerLatest(applicationContext)
+    }
+
+    private fun handleIncomingIntent(intent: Intent) {
+        val data = intent.data
+        if (data?.scheme.equals("cerca", true) && data?.host.equals("call", true)) {
+            val phone = data?.getQueryParameter("phone").orEmpty()
+            if (phone.isNotBlank()) {
+                webView.post { startDirectCall(phone) }
+                return
+            }
+        }
+        loadIntentTarget(intent)
     }
 
     private fun handleNavigation(uri: Uri): Boolean {
@@ -106,24 +104,21 @@ class WebAppActivity : AppCompatActivity() {
                 startDirectCall(uri.schemeSpecificPart.orEmpty())
                 true
             }
+            "cerca" -> {
+                if (uri.host.equals("call", true)) {
+                    startDirectCall(uri.getQueryParameter("phone").orEmpty())
+                    true
+                } else false
+            }
             "http", "https" -> {
-                if (uri.host.equals("cerca-seguridad.pages.dev", ignoreCase = true)) {
-                    false
-                } else {
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, uri))
-                    } catch (_: Exception) {
-                    }
+                if (uri.host.equals("cerca-seguridad.pages.dev", ignoreCase = true)) false
+                else {
+                    try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) {}
                     true
                 }
             }
             else -> {
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, uri))
-                    true
-                } catch (_: Exception) {
-                    false
-                }
+                try { startActivity(Intent(Intent.ACTION_VIEW, uri)); true } catch (_: Exception) { false }
             }
         }
     }
@@ -131,17 +126,10 @@ class WebAppActivity : AppCompatActivity() {
     private fun loadIntentTarget(intent: Intent) {
         val emergencyId = intent.getStringExtra("emergency_id").orEmpty().trim()
         val openAction = intent.getStringExtra("open_action").orEmpty().trim()
-        val target = if (emergencyId.isBlank()) {
-            WEB_URL
-        } else {
-            Uri.parse(WEB_URL).buildUpon()
-                .appendQueryParameter("alert", emergencyId)
-                .apply {
-                    if (openAction.isNotBlank()) appendQueryParameter("view", openAction)
-                }
-                .build()
-                .toString()
-        }
+        val target = if (emergencyId.isBlank()) WEB_URL else Uri.parse(WEB_URL).buildUpon()
+            .appendQueryParameter("alert", emergencyId)
+            .apply { if (openAction.isNotBlank()) appendQueryParameter("view", openAction) }
+            .build().toString()
         webView.loadUrl(target)
     }
 
@@ -154,14 +142,8 @@ class WebAppActivity : AppCompatActivity() {
             if (isFinishing || isDestroyed) return@post
             AlertDialog.Builder(this)
                 .setTitle("Activá la llamada automática")
-                .setMessage("CERCA necesita permiso para llamar automáticamente a tu contacto de llamada cuando activás un SOS normal. El SOS silencioso nunca realiza llamadas.")
-                .setPositiveButton("ACTIVAR") { _, _ ->
-                    ActivityCompat.requestPermissions(
-                        this,
-                        arrayOf(Manifest.permission.CALL_PHONE),
-                        REQ_CALL
-                    )
-                }
+                .setMessage("CERCA necesita permiso para llamar automáticamente a tu contacto cuando activás un SOS normal. El SOS silencioso nunca realiza llamadas.")
+                .setPositiveButton("ACTIVAR") { _, _ -> ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL) }
                 .setNegativeButton("MÁS TARDE", null)
                 .show()
         }
@@ -180,28 +162,24 @@ class WebAppActivity : AppCompatActivity() {
         if (phone.isBlank()) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
             pendingCallPhone = phone
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.CALL_PHONE),
-                REQ_CALL
-            )
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL)
             return
         }
+        val uri = Uri.fromParts("tel", phone, null)
         try {
-            startActivity(Intent(Intent.ACTION_CALL, Uri.fromParts("tel", phone, null)))
+            val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
+            telecom.placeCall(uri, Bundle())
+            return
         } catch (_: Exception) {
-            try {
-                startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)))
-            } catch (_: Exception) {
-            }
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+            // No abrimos ACTION_DIAL: si Android no permite la llamada directa, la app no debe dejar al usuario en el teclado.
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             REQ_CALL -> {
@@ -228,14 +206,10 @@ class WebAppActivity : AppCompatActivity() {
 
     inner class CercaNativeBridge {
         @JavascriptInterface
-        fun directCall(phone: String) {
-            runOnUiThread { startDirectCall(phone) }
-        }
+        fun directCall(phone: String) { runOnUiThread { startDirectCall(phone) } }
 
         @JavascriptInterface
-        fun syncSession(accessToken: String) {
-            NativePushRegistrar.saveAccessToken(applicationContext, accessToken)
-        }
+        fun syncSession(accessToken: String) { NativePushRegistrar.saveAccessToken(applicationContext, accessToken) }
 
         @JavascriptInterface
         fun isNativeAndroid(): Boolean = true

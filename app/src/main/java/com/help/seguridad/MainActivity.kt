@@ -897,6 +897,7 @@ class MainActivity : AppCompatActivity() {
                 .putString("sms" + i + "Phone", "")
                 .putString("sms" + i + "MedicalAccess", "never")
                 .putBoolean("sms" + i + "ShareMedical", false)
+                .putBoolean("sms" + i + "Enabled", false)
         }
         var serverCallName = ""
         var serverCallPhone = ""
@@ -910,7 +911,8 @@ class MainActivity : AppCompatActivity() {
             e.putString("sms" + slot + "Name", name)
                 .putString("sms" + slot + "Phone", phone)
                 .putString("sms" + slot + "MedicalAccess", access)
-                .putBoolean("sms" + slot + "ShareMedical", oldShare[phoneKey(phone)] ?: false)
+                .putBoolean("sms" + slot + "ShareMedical", access != "never")
+                .putBoolean("sms" + slot + "Enabled", o.optBoolean("sms_enabled", true))
             if (o.optBoolean("call_enabled", false) && serverCallPhone.isBlank()) {
                 serverCallName = name
                 serverCallPhone = phone
@@ -1856,14 +1858,15 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
     private data class SmsRecipient(val name: String, val phone: String, val shareMedical: Boolean)
 
     private fun savedSmsContacts(): List<SmsRecipient> {
-        val callKey = phoneKey(callPhone)
+        val p = contactPrefs()
         return listOf(
-            SmsRecipient(sms1Name, sms1Phone, contactPrefs().getBoolean("sms1ShareMedical", false)),
-            SmsRecipient(sms2Name, sms2Phone, contactPrefs().getBoolean("sms2ShareMedical", false)),
-            SmsRecipient(sms3Name, sms3Phone, contactPrefs().getBoolean("sms3ShareMedical", false)),
-            SmsRecipient(sms4Name, sms4Phone, contactPrefs().getBoolean("sms4ShareMedical", false))
-        ).filter { it.phone.isNotBlank() && (callKey.isBlank() || phoneKey(it.phone) != callKey) }
-            .distinctBy { phoneKey(it.phone) }
+            SmsRecipient(sms1Name, sms1Phone, p.getBoolean("sms1ShareMedical", p.getString("sms1MedicalAccess", "never") != "never")),
+            SmsRecipient(sms2Name, sms2Phone, p.getBoolean("sms2ShareMedical", p.getString("sms2MedicalAccess", "never") != "never")),
+            SmsRecipient(sms3Name, sms3Phone, p.getBoolean("sms3ShareMedical", p.getString("sms3MedicalAccess", "never") != "never")),
+            SmsRecipient(sms4Name, sms4Phone, p.getBoolean("sms4ShareMedical", p.getString("sms4MedicalAccess", "never") != "never"))
+        ).filterIndexed { index, recipient ->
+            recipient.phone.isNotBlank() && p.getBoolean("sms${index + 1}Enabled", true)
+        }.distinctBy { phoneKey(it.phone) }
     }
 
     @Suppress("DEPRECATION")

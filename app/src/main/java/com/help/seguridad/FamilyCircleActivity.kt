@@ -51,7 +51,7 @@ class FamilyCircleActivity : AppCompatActivity() {
             val phone=p.getString("sms"+i+"Phone","").orEmpty()
             val key=phoneKey(phone)
             if(phone.isNotBlank() && key.isNotBlank() && seen.add(key)) {
-                out += C(i,p.getString("sms"+i+"Name","").orEmpty().ifBlank{"Contacto"},phone,p.getString("sms"+i+"MedicalAccess","emergency").orEmpty().ifBlank{"emergency"})
+                out += C(i,p.getString("sms"+i+"Name","").orEmpty().ifBlank{"Contacto"},phone,p.getString("sms"+i+"MedicalAccess","never").orEmpty().ifBlank{"never"})
             }
         }
         return out
@@ -98,6 +98,7 @@ class FamilyCircleActivity : AppCompatActivity() {
                 .putString("sms"+i+"Phone","")
                 .putString("sms"+i+"MedicalAccess","never")
                 .putBoolean("sms"+i+"ShareMedical",false)
+                .putBoolean("sms"+i+"Enabled",false)
         }
         var callName = ""
         var callPhone = ""
@@ -109,7 +110,8 @@ class FamilyCircleActivity : AppCompatActivity() {
             e.putString("sms"+slot+"Name",name)
                 .putString("sms"+slot+"Phone",phone)
                 .putString("sms"+slot+"MedicalAccess",access)
-                .putBoolean("sms"+slot+"ShareMedical",oldShare[phoneKey(phone)] ?: false)
+                .putBoolean("sms"+slot+"ShareMedical",access != "never")
+                .putBoolean("sms"+slot+"Enabled",o.optBoolean("sms_enabled",true))
             if(o.optBoolean("call_enabled",false) && callPhone.isBlank()){
                 callName=name; callPhone=phone
             }
@@ -173,19 +175,25 @@ class FamilyCircleActivity : AppCompatActivity() {
         top.addView(TextView(this).apply { text=if(has) "✓ Tiene CERCA" else "Sin CERCA"; textSize=13f; setTypeface(typeface,android.graphics.Typeface.BOLD); setTextColor(Color.parseColor(if(has)"#0B5960" else "#657579")); setPadding(dp(10),dp(7),dp(10),dp(7)); setBackgroundColor(Color.parseColor(if(has)"#DDF2F0" else "#EEF1F1")) })
         box.addView(top)
         val call=phoneKey(prefs().getString("callPhone","").orEmpty())==phoneKey(c.phone)
-        box.addView(body((if(call) "Contacto de llamada" else "Contacto SMS") + (if(has) "  ·  Alerta CERCA activa" else "")))
+        val sms=rc?.optBoolean("sms_enabled",true) ?: prefs().getBoolean("sms"+c.slot+"Enabled",true)
+        val roles=mutableListOf<String>()
+        if(call) roles += "Llamada"
+        if(sms) roles += "SMS"
+        if(has) roles += "Alerta CERCA"
+        box.addView(body(roles.joinToString("  ·  ")))
+        if(sms) box.addView(body("📍 El SMS de emergencia incluye tu ubicación. 🩺 Información útil: " + if(c.access=="never") "no incluida" else "incluida"))
 
-        if (BuildConfig.HEALTH_FEATURES) {
+        run {
             val medical = card().apply {
                 setBackgroundColor(Color.parseColor("#F1F7F6"))
                 addView(TextView(this@FamilyCircleActivity).apply {
-                    text = "Ficha médica: " + accessLabel(c.access)
+                    text = "Información útil: " + accessLabel(c.access)
                     textSize = 14f
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setTextColor(Color.parseColor("#0B5960"))
                 })
-                addView(body(if(has) "CERCA compartirá la ficha según este permiso." else "Este permiso quedará preparado y se activará automáticamente si este contacto instala CERCA. La ficha no se envía por SMS."))
-                addView(secondary("CAMBIAR FICHA MÉDICA") { chooseAccess(c) })
+                addView(body(if(has) "Este permiso se aplica a la alerta CERCA y al SMS de emergencia." else "Si autorizás la información útil, se incluirá en el SMS de emergencia."))
+                addView(secondary("CAMBIAR INFORMACIÓN ÚTIL") { chooseAccess(c) })
             }
             box.addView(medical, margin())
         }
@@ -201,7 +209,7 @@ class FamilyCircleActivity : AppCompatActivity() {
     private fun chooseAccess(c:C){
         val opts=arrayOf("No compartir","Solo durante una emergencia","Siempre")
         val checked=when(c.access){"never"->0;"always"->2;else->1}
-        AlertDialog.Builder(this).setTitle("Ficha médica para "+c.name).setSingleChoiceItems(opts,checked){d,w->
+        AlertDialog.Builder(this).setTitle("Información útil para "+c.name).setSingleChoiceItems(opts,checked){d,w->
             val v=when(w){0->"never";2->"always";else->"emergency"}; d.dismiss(); prefs().edit().putString("sms"+c.slot+"MedicalAccess",v).apply(); syncAndReload()
         }.show()
     }
@@ -211,7 +219,7 @@ class FamilyCircleActivity : AppCompatActivity() {
     private fun removeContact(c:C){
         AlertDialog.Builder(this).setTitle("Quitar a "+c.name).setMessage("Dejará de recibir tus alertas CERCA.").setNegativeButton("CANCELAR",null).setPositiveButton("QUITAR"){_,_->
             val p=prefs(); val wasCall=phoneKey(p.getString("callPhone","").orEmpty())==phoneKey(c.phone)
-            p.edit().putString("sms"+c.slot+"Name","").putString("sms"+c.slot+"Phone","").putString("sms"+c.slot+"MedicalAccess","emergency").apply()
+            p.edit().putString("sms"+c.slot+"Name","").putString("sms"+c.slot+"Phone","").putString("sms"+c.slot+"MedicalAccess","never").apply()
             if(wasCall){ val next=contacts().firstOrNull(); p.edit().putString("callName",next?.name ?: "").putString("callPhone",next?.phone ?: "").apply() }
             compactSlots(); syncAndReload()
         }.show()
@@ -219,7 +227,7 @@ class FamilyCircleActivity : AppCompatActivity() {
 
     private fun compactSlots(){
         val old=contacts(); val p=prefs().edit()
-        for(i in 1..4){p.putString("sms"+i+"Name","").putString("sms"+i+"Phone","").putString("sms"+i+"MedicalAccess","emergency")}
+        for(i in 1..4){p.putString("sms"+i+"Name","").putString("sms"+i+"Phone","").putString("sms"+i+"MedicalAccess","never")}
         old.forEachIndexed{i,c-> val n=i+1; p.putString("sms"+n+"Name",c.name).putString("sms"+n+"Phone",c.phone).putString("sms"+n+"MedicalAccess",c.access)}; p.apply()
     }
 
@@ -232,7 +240,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         try{cur=contentResolver.query(uri,arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,ContactsContract.CommonDataKinds.Phone.NUMBER),null,null,null); if(cur!=null&&cur.moveToFirst()){val ni=cur.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);val pi=cur.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);if(ni>=0)n=cur.getString(ni)?:"";if(pi>=0)p=cur.getString(pi)?:""}}finally{cur?.close()}
         p=norm(p); if(p.isBlank()){toast("Ese contacto no tiene un teléfono válido.");return}; if(contacts().any{phoneKey(it.phone)==phoneKey(p)}){toast("Ese contacto ya está agregado.");return}
         val slot=(1..4).firstOrNull{i->prefs().getString("sms"+i+"Phone","").isNullOrBlank()} ?: return
-        val e=prefs().edit().putString("sms"+slot+"Name",n.ifBlank{"Contacto"}).putString("sms"+slot+"Phone",p).putString("sms"+slot+"MedicalAccess","emergency")
+        val e=prefs().edit().putString("sms"+slot+"Name",n.ifBlank{"Contacto"}).putString("sms"+slot+"Phone",p).putString("sms"+slot+"MedicalAccess","never")
         if(prefs().getString("callPhone","").isNullOrBlank()) e.putString("callName",n.ifBlank{"Contacto"}).putString("callPhone",p)
         e.apply(); syncAndReload()
     }
@@ -246,7 +254,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         val s=session ?: return; val a=JSONArray(); val call=prefs().getString("callPhone","").orEmpty(); val callKey=phoneKey(call)
         for(c in contacts()){
             val isCall=callKey.isNotBlank() && phoneKey(c.phone)==callKey
-            a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",!isCall).put("call_enabled",isCall).put("medical_access",c.access))
+            a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",true).put("call_enabled",isCall).put("medical_access",c.access))
         }
         executor.execute{try{val state=api.syncNetworkContacts(s,a);runOnUiThread{serverState=state;render()}}catch(e:Exception){runOnUiThread{render();toast(e.message?:"Los contactos quedaron guardados en el teléfono y se sincronizarán cuando vuelva Internet.")}}}
     }

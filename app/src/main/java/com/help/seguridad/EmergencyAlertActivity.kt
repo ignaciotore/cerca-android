@@ -1,6 +1,5 @@
 package com.help.seguridad
 
-import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -45,26 +44,38 @@ class EmergencyAlertActivity : AppCompatActivity() {
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        emergencyId = intent.getStringExtra("emergency_id").orEmpty()
-        ownerUserId = intent.getStringExtra("owner_user_id").orEmpty()
-        personName = intent.getStringExtra("person_name").orEmpty().ifBlank { "Contacto CERCA" }
-        latitude = intent.getStringExtra("latitude").orEmpty()
-        longitude = intent.getStringExtra("longitude").orEmpty()
-        medicalAccess = if (BuildConfig.HEALTH_FEATURES) intent.getStringExtra("medical_access").orEmpty().ifBlank { "never" } else "never"
-
+        readIntent(intent)
         render()
+        handleOpenAction(intent)
     }
 
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
         setIntent(newIntent)
-        emergencyId = newIntent.getStringExtra("emergency_id").orEmpty()
-        ownerUserId = newIntent.getStringExtra("owner_user_id").orEmpty()
-        personName = newIntent.getStringExtra("person_name").orEmpty().ifBlank { "Contacto CERCA" }
-        latitude = newIntent.getStringExtra("latitude").orEmpty()
-        longitude = newIntent.getStringExtra("longitude").orEmpty()
-        medicalAccess = if (BuildConfig.HEALTH_FEATURES) newIntent.getStringExtra("medical_access").orEmpty().ifBlank { "never" } else "never"
+        readIntent(newIntent)
         render()
+        handleOpenAction(newIntent)
+    }
+
+    private fun readIntent(source: Intent) {
+        emergencyId = source.getStringExtra("emergency_id").orEmpty()
+        ownerUserId = source.getStringExtra("owner_user_id").orEmpty()
+        personName = source.getStringExtra("person_name").orEmpty().ifBlank { "Contacto CERCA" }
+        latitude = source.getStringExtra("latitude").orEmpty()
+        longitude = source.getStringExtra("longitude").orEmpty()
+        medicalAccess = source.getStringExtra("medical_access").orEmpty().ifBlank { "never" }
+    }
+
+    private fun handleOpenAction(source: Intent) {
+        when (source.getStringExtra("open_action").orEmpty()) {
+            "location" -> if (latitude.isNotBlank() && longitude.isNotBlank()) {
+                window.decorView.post { openLocation() }
+            }
+            "medical" -> if (medicalAccess != "never" && ownerUserId.isNotBlank()) {
+                window.decorView.post { loadMedical() }
+            }
+        }
+        source.removeExtra("open_action")
     }
 
     override fun onDestroy() {
@@ -110,11 +121,18 @@ class EmergencyAlertActivity : AppCompatActivity() {
         root.addView(primary("YA LO VI") { markSeen() })
 
         if (latitude.isNotBlank() && longitude.isNotBlank()) {
-            root.addView(primary("VER UBICACIÓN") { openLocation() }, topMargin())
+            root.addView(primary("📍 VER UBICACIÓN") { openLocation() }, topMargin())
+        } else {
+            root.addView(TextView(this).apply {
+                text = "Esperando ubicación…"
+                textSize = 15f
+                setTextColor(Color.parseColor("#657579"))
+                setPadding(0, dp(12), 0, 0)
+            })
         }
 
-        if (BuildConfig.HEALTH_FEATURES && medicalAccess != "never" && ownerUserId.isNotBlank()) {
-            root.addView(secondary("VER FICHA MÉDICA") { loadMedical() }, topMargin())
+        if (medicalAccess != "never" && ownerUserId.isNotBlank()) {
+            root.addView(secondary("🩺 VER INFORMACIÓN ÚTIL") { loadMedical() }, topMargin())
         }
 
         root.addView(secondary("CERRAR") { finish() }, topMargin())
@@ -136,10 +154,7 @@ class EmergencyAlertActivity : AppCompatActivity() {
                     sessionStore.save(active)
                 }
                 api.markNetworkEmergencySeen(active, emergencyId)
-                runOnUiThread {
-                    toast("Confirmaste que viste la alerta.")
-                    finish()
-                }
+                runOnUiThread { toast("Confirmaste que viste la alerta.") }
             } catch (e: Exception) {
                 runOnUiThread { toast(e.message ?: "No pudimos confirmar la alerta.") }
             }
@@ -147,6 +162,10 @@ class EmergencyAlertActivity : AppCompatActivity() {
     }
 
     private fun openLocation() {
+        if (latitude.isBlank() || longitude.isBlank()) {
+            toast("La ubicación todavía no está disponible.")
+            return
+        }
         val uri = Uri.parse("https://maps.google.com/?q=${Uri.encode("$latitude,$longitude")}")
         try {
             startActivity(Intent(Intent.ACTION_VIEW, uri))
@@ -156,9 +175,13 @@ class EmergencyAlertActivity : AppCompatActivity() {
     }
 
     private fun loadMedical() {
+        if (medicalAccess == "never" || ownerUserId.isBlank()) {
+            toast("La persona no autorizó compartir esta información.")
+            return
+        }
         val s = sessionStore.load()
         if (s == null) {
-            toast("Iniciá sesión para ver la ficha médica.")
+            toast("Iniciá sesión para ver la información útil.")
             return
         }
         executor.execute {
@@ -171,7 +194,7 @@ class EmergencyAlertActivity : AppCompatActivity() {
                 val result = api.fetchNetworkMedical(active, ownerUserId)
                 runOnUiThread { showMedical(result) }
             } catch (e: Exception) {
-                runOnUiThread { toast(e.message ?: "No pudimos cargar la ficha médica.") }
+                runOnUiThread { toast(e.message ?: "No pudimos cargar la información útil.") }
             }
         }
     }
@@ -179,7 +202,7 @@ class EmergencyAlertActivity : AppCompatActivity() {
     private fun showMedical(result: JSONObject) {
         val m = result.optJSONObject("medical")
         if (m == null) {
-            toast("La ficha médica todavía está vacía.")
+            toast("La información útil todavía está vacía.")
             return
         }
         fun f(label: String, key: String): String {
@@ -202,8 +225,8 @@ class EmergencyAlertActivity : AppCompatActivity() {
         }.trim()
 
         AlertDialog.Builder(this)
-            .setTitle("Ficha médica · $personName")
-            .setMessage(text.ifBlank { "La ficha médica todavía está vacía." })
+            .setTitle("Información útil · $personName")
+            .setMessage(text.ifBlank { "La información útil todavía está vacía." })
             .setPositiveButton("CERRAR", null)
             .show()
     }

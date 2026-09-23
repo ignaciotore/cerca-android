@@ -9,25 +9,71 @@
     try{return typeof designatedCall==='function'?designatedCall():null}catch{return null}
   }
 
-  function openConfiguredCall(){
+  function callInfo(){
     const c=currentCallContact();
-    const phone=first?.(c,'phone_e164','phone','target_phone','contact_phone')||c?.phone_e164||c?.phone||'';
+    if(!c)return null;
+    const phone=(typeof first==='function'?first(c,'phone_e164','phone','target_phone','contact_phone'):null)||c.phone_e164||c.phone||'';
     const tel=cleanTel(phone);
-    if(!tel)return false;
+    if(!tel)return null;
+    const name=c.display_name||c.full_name||c.name||'contacto de llamada';
+    return {name,tel};
+  }
+
+  function openConfiguredCall(){
+    const info=callInfo();
+    if(!info)return false;
+    window.location.href='tel:'+info.tel;
+    return true;
+  }
+
+  function showCallPrompt(){
+    const info=callInfo();
+    if(!info)return;
+    const existing=document.getElementById('cercaCallPrompt');
+    if(existing)return;
+    const w=modal('<div id="cercaCallPrompt"><h2>SOS activado</h2><p>La alerta ya fue enviada a tu Red CERCA.</p><button id="cercaCallNow" class="btn danger block" style="margin-top:16px;font-size:20px;padding:18px">📞 LLAMAR A '+esc(info.name).toUpperCase()+'</button><button id="cercaCallLater" class="btn light block" style="margin-top:8px">Seguir sin llamar</button></div>');
+    const callBtn=w.querySelector('#cercaCallNow');
+    const later=w.querySelector('#cercaCallLater');
+    if(callBtn)callBtn.onclick=()=>openConfiguredCall();
+    if(later)later.onclick=()=>w.remove();
+  }
+
+  function installActiveCallButton(){
     try{
-      if(typeof toast==='function')toast('Abriendo llamada al contacto configurado…');
-      window.location.href='tel:'+tel;
-      return true;
-    }catch{return false}
+      if(typeof S==='undefined'||!S.activeEmergency||S.activeEmergency.mode==='silent')return;
+      const info=callInfo();
+      if(!info)return;
+      const resolve=document.getElementById('resolveBtn');
+      if(!resolve||document.getElementById('activeCallBtn'))return;
+      const b=document.createElement('button');
+      b.id='activeCallBtn';
+      b.className='btn danger block';
+      b.style.margin='10px auto';
+      b.style.maxWidth='360px';
+      b.style.fontSize='18px';
+      b.textContent='📞 LLAMAR A '+String(info.name).toUpperCase();
+      b.onclick=()=>openConfiguredCall();
+      resolve.parentElement?.insertBefore(b,resolve);
+    }catch{}
   }
 
   if(typeof startEmergency==='function'){
     const baseStartEmergency=startEmergency;
     startEmergency=async function(silent){
       await baseStartEmergency(silent);
-      if(!silent && typeof S!=='undefined' && S.activeEmergency){
-        setTimeout(()=>openConfiguredCall(),450);
+      if(!silent&&typeof S!=='undefined'&&S.activeEmergency){
+        installActiveCallButton();
+        setTimeout(showCallPrompt,150);
       }
+    };
+  }
+
+  if(typeof renderDashboard==='function'){
+    const baseRenderDashboard=renderDashboard;
+    renderDashboard=function(){
+      const r=baseRenderDashboard.apply(this,arguments);
+      setTimeout(installActiveCallButton,0);
+      return r;
     };
   }
 
@@ -55,10 +101,11 @@
     if(typeof S!=='undefined'&&S.user){
       clearInterval(wait);
       try{if(typeof startPolling==='function')startPolling()}catch{}
+      installActiveCallButton();
       refreshIncoming();
     }else if(tries>120){clearInterval(wait)}
   },500);
 
-  window.addEventListener('focus',refreshIncoming);
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshIncoming()});
+  window.addEventListener('focus',()=>{installActiveCallButton();refreshIncoming()});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){installActiveCallButton();refreshIncoming()}});
 })();

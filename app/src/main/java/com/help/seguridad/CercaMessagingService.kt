@@ -15,6 +15,11 @@ import com.google.firebase.messaging.RemoteMessage
 
 class CercaMessagingService : FirebaseMessagingService() {
 
+    override fun onNewToken(token: String) {
+        super.onNewToken(token)
+        NativePushRegistrar.registerToken(applicationContext, token)
+    }
+
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         if (data["event"] == "resolved") {
@@ -34,7 +39,7 @@ class CercaMessagingService : FirebaseMessagingService() {
             val personName = data["person_name"].orEmpty().ifBlank { "Una persona de tu Red CERCA" }
             val medicalAccess = data["medical_access"].orEmpty().ifBlank { "never" }
 
-            fun alertIntent(openAction: String = ""): Intent = Intent(context, EmergencyAlertActivity::class.java).apply {
+            fun alertIntent(openAction: String = ""): Intent = Intent(context, WebAppActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra("emergency_id", emergencyId)
                 putExtra("owner_user_id", data["owner_user_id"].orEmpty())

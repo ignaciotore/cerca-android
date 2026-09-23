@@ -1,5 +1,5 @@
-const CACHE='cerca-web-v21';
-const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/network-invite-cleanup.js','/notification-permission.js','/web-push-fix.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
+const CACHE='cerca-web-v22';
+const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/network-invite-cleanup.js','/notification-permission.js','/web-push-fix.js','/emergency-runtime-fix.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
 
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).then(()=>self.skipWaiting()));
@@ -14,61 +14,36 @@ self.addEventListener('fetch',e=>{
   if(r.method!=='GET')return;
   const u=new URL(r.url);
   if(u.origin!==location.origin)return;
-
-  if(u.pathname.startsWith('/api/')){
-    e.respondWith(fetch(r,{cache:'no-store'}));
-    return;
-  }
-
+  if(u.pathname.startsWith('/api/')){e.respondWith(fetch(r,{cache:'no-store'}));return}
   if(r.mode==='navigate'){
-    e.respondWith(fetch(r,{cache:'no-store'}).then(res=>{
-      const copy=res.clone();caches.open(CACHE).then(c=>c.put('/index.html',copy));return res;
-    }).catch(()=>caches.match('/index.html')));
+    e.respondWith(fetch(r,{cache:'no-store'}).then(res=>{const copy=res.clone();caches.open(CACHE).then(c=>c.put('/index.html',copy));return res}).catch(()=>caches.match('/index.html')));
     return;
   }
-
-  e.respondWith(
-    fetch(r,{cache:'no-store'}).then(res=>{
-      if(res.ok){const copy=res.clone();caches.open(CACHE).then(c=>c.put(r,copy))}
-      return res;
-    }).catch(()=>caches.match(r))
-  );
+  e.respondWith(fetch(r,{cache:'no-store'}).then(res=>{if(res.ok){const copy=res.clone();caches.open(CACHE).then(c=>c.put(r,copy))}return res}).catch(()=>caches.match(r)));
 });
 
 self.addEventListener('push',e=>{
   let d={};try{d=e.data?e.data.json():{}}catch{}
-  const title=d.title||'🚨 Alerta CERCA';
-  const isResolved=d.event==='resolved';
-  const actions=isResolved?[]:[{action:'location',title:'📍 Ver ubicación'}];
-  if(!isResolved&&(d.medical_access||'never')!=='never')actions.push({action:'medical',title:'🩺 Información útil'});
-  const o={
-    body:d.body||(isResolved?'La emergencia fue finalizada.':'Una persona de tu Red CERCA necesita ayuda. Tocá para ver su ubicación e información autorizada.'),
-    icon:'/icon.svg',
-    badge:'/icon.svg',
-    tag:(d.emergency_id||'cerca-alert')+(isResolved?'-resolved':''),
-    renotify:true,
-    requireInteraction:!isResolved,
-    actions,
+  const resolved=d.event==='resolved';
+  const title=d.title||(resolved?'CERCA · Emergencia finalizada':'🚨 Alerta CERCA');
+  const options={
+    body:d.body||(resolved?'La emergencia fue finalizada.':'Una persona de tu Red CERCA necesita ayuda. Tocá para ver la alerta.'),
+    tag:(d.emergency_id||'cerca-alert')+(resolved?'-resolved':''),
     data:d
   };
-  e.waitUntil(self.registration.showNotification(title,o));
+  e.waitUntil(self.registration.showNotification(title,options));
 });
 
 self.addEventListener('notificationclick',e=>{
   e.notification.close();
   const d=e.notification.data||{};
   const id=d.emergency_id||'';
-  const view=e.action==='medical'?'medical':e.action==='location'?'location':'';
   const qs=new URLSearchParams();
   if(id)qs.set('alert',id);
-  if(view)qs.set('view',view);
   const target='/'+(qs.toString()?'?'+qs.toString():'');
   e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(ws=>{
     for(const w of ws){
-      if('focus'in w){
-        w.postMessage({type:'open-alert',id,view});
-        return w.focus();
-      }
+      if('focus'in w){w.postMessage({type:'open-alert',id});return w.focus()}
     }
     return clients.openWindow(target);
   }));

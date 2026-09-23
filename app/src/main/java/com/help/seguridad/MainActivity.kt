@@ -446,7 +446,7 @@ class MainActivity : AppCompatActivity() {
         val anchor = findViewById<Button>(anchorId)
         val parent = anchor.parent as LinearLayout
         val box = CheckBox(this).apply {
-            text = "Incluir mi información útil ante una emergencia en el SMS a este contacto"
+            text = "Autorizar mi información útil para este contacto durante una alerta CERCA"
             textSize = 14f
             setTextColor(android.graphics.Color.parseColor("#34454A"))
             visibility = View.GONE
@@ -462,7 +462,7 @@ class MainActivity : AppCompatActivity() {
         box.setOnCheckedChangeListener { _, checked ->
             contactPrefs().edit().putBoolean("sms" + index + "ShareMedical", checked).apply()
             if (checked && emergencyInfoText().isBlank()) {
-                toast("Quedó marcado. Cargá tu información útil ante una emergencia para incluirla en el SMS.")
+                toast("Quedó autorizado. Cargá tu información útil ante una emergencia para que esté disponible durante la alerta.")
             }
         }
         return box
@@ -1047,7 +1047,7 @@ class MainActivity : AppCompatActivity() {
         if (personName.length < 2) { toast("Ingresá tu nombre."); return false }
         if (manualCall.isBlank()) { toast("Elegí o escribí un número para la llamada."); return false }
         if (sms1Phone.isBlank() && sms2Phone.isBlank() && sms3Phone.isBlank() && sms4Phone.isBlank()) {
-            toast("Elegí al menos un contacto para recibir el SMS.")
+            toast("Elegí al menos un contacto para tu Red CERCA.")
             return false
         }
         if (manualCall != callPhone) {
@@ -1089,9 +1089,8 @@ class MainActivity : AppCompatActivity() {
         if (currentSession == null) { showLogin(); return }
         loadContactState()
         val callLabel = if (callPhone.isBlank()) "—" else "${callName.ifBlank { "Contacto" }} · $callPhone"
-        val smsContacts = savedSmsContacts()
         homeCallSummary.text = "Llamada: $callLabel"
-        homeSmsSummary.text = "Avisos por SMS: ${smsContacts.size} contacto(s) · Mi Red CERCA suma alertas dentro de la app"
+        homeSmsSummary.text = "Notificaciones: Red CERCA"
         trialBadge.text = when {
             isSubscriptionActiveCached() -> "Suscripción activa"
             daysRemaining() > 0 -> "Prueba gratuita · ${daysRemaining()} día(s)"
@@ -1141,7 +1140,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Activar SOS silencioso")
-                    .setMessage("Enviará el SMS, la ubicación y la alerta a tu Red CERCA, pero no realizará la llamada automática.")
+                    .setMessage("Enviará una notificación a tu Red CERCA con acceso a tu ubicación y a la información útil autorizada, pero no realizará la llamada automática.")
                     .setNegativeButton("CANCELAR", null)
                     .setPositiveButton("ACTIVAR") { _, _ -> triggerHelp(true) }
                     .show()

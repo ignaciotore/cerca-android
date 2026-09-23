@@ -129,7 +129,7 @@ class FamilyCircleActivity : AppCompatActivity() {
     private fun render(){
         root.removeAllViews()
         root.addView(title("Tu Red CERCA",30f))
-        root.addView(body("Agregá hasta 4 contactos. Si alguno también usa CERCA, lo detectamos automáticamente y activamos funciones adicionales."))
+        root.addView(body("Sumá personas a tu Red CERCA. Quienes tengan CERCA instalada reciben notificaciones de emergencia con acceso a tu ubicación y a la información útil que autorices."))
 
         val alerts=serverState.optJSONArray("incoming_alerts")
         if(alerts!=null && alerts.length()>0){
@@ -152,7 +152,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         val remote=serverState.optJSONArray("contacts") ?: serverState.optJSONArray("outgoing")
         for(c in local) root.addView(contactCard(c, remote), margin())
 
-        val info=card(); info.addView(body("Los contactos reciben el SMS aunque no tengan CERCA. Si tienen la app, además reciben la alerta prioritaria y las funciones que autorices.")); root.addView(info,margin())
+        val info=card(); info.addView(body("Las alertas se envían como notificaciones CERCA. Si una persona todavía no tiene la app, invitala para que pueda recibirlas. Podés mantener un único contacto adicional para llamada.")); root.addView(info,margin())
         root.addView(secondary("ACTUALIZAR ESTADO") { syncAndReload() },margin())
         root.addView(secondary("VOLVER") { finish() },margin())
     }
@@ -175,13 +175,12 @@ class FamilyCircleActivity : AppCompatActivity() {
         top.addView(TextView(this).apply { text=if(has) "✓ Tiene CERCA" else "Sin CERCA"; textSize=13f; setTypeface(typeface,android.graphics.Typeface.BOLD); setTextColor(Color.parseColor(if(has)"#0B5960" else "#657579")); setPadding(dp(10),dp(7),dp(10),dp(7)); setBackgroundColor(Color.parseColor(if(has)"#DDF2F0" else "#EEF1F1")) })
         box.addView(top)
         val call=phoneKey(prefs().getString("callPhone","").orEmpty())==phoneKey(c.phone)
-        val sms=rc?.optBoolean("sms_enabled",true) ?: prefs().getBoolean("sms"+c.slot+"Enabled",true)
         val roles=mutableListOf<String>()
         if(call) roles += "Llamada"
-        if(sms) roles += "SMS"
-        if(has) roles += "Alerta CERCA"
+        if(has) roles += "Notificación CERCA" else roles += "Notificación pendiente"
         box.addView(body(roles.joinToString("  ·  ")))
-        if(sms) box.addView(body("📍 El SMS de emergencia incluye tu ubicación. 🩺 Información útil: " + if(c.access=="never") "no incluida" else "incluida"))
+        if(has) box.addView(body("📍 Ubicación: disponible desde la alerta. 🩺 Información útil: " + if(c.access=="never") "no autorizada" else "autorizada"))
+        else box.addView(body("Esta persona debe instalar CERCA y aceptar tu invitación para recibir notificaciones."))
 
         run {
             val medical = card().apply {
@@ -192,7 +191,7 @@ class FamilyCircleActivity : AppCompatActivity() {
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setTextColor(Color.parseColor("#0B5960"))
                 })
-                addView(body(if(has) "Este permiso se aplica a la alerta CERCA y al SMS de emergencia." else "Si autorizás la información útil, se incluirá en el SMS de emergencia."))
+                addView(body(if(has) "Este permiso se aplica a la alerta CERCA que recibe el contacto." else "Cuando esta persona se vincule a CERCA, podrá ver la información útil que autorices durante la alerta."))
                 addView(secondary("CAMBIAR INFORMACIÓN ÚTIL") { chooseAccess(c) })
             }
             box.addView(medical, margin())
@@ -254,7 +253,7 @@ class FamilyCircleActivity : AppCompatActivity() {
         val s=session ?: return; val a=JSONArray(); val call=prefs().getString("callPhone","").orEmpty(); val callKey=phoneKey(call)
         for(c in contacts()){
             val isCall=callKey.isNotBlank() && phoneKey(c.phone)==callKey
-            a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",true).put("call_enabled",isCall).put("medical_access",c.access))
+            a.put(JSONObject().put("slot",c.slot).put("name",c.name).put("phone",c.phone).put("sms_enabled",false).put("call_enabled",isCall).put("medical_access",c.access))
         }
         executor.execute{try{val state=api.syncNetworkContacts(s,a);runOnUiThread{serverState=state;render()}}catch(e:Exception){runOnUiThread{render();toast(e.message?:"Los contactos quedaron guardados en el teléfono y se sincronizarán cuando vuelva Internet.")}}}
     }

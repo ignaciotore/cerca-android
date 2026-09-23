@@ -1479,11 +1479,6 @@ private fun continuePermissionSetup() {
         return
     }
 
-    if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.SEND_SMS), REQ_SMS_PERMISSION)
-        return
-    }
-
     val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
     val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
     if (!fine && !coarse) {
@@ -1532,10 +1527,9 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
         .show()
 }    private fun hasEmergencyPermissions(): Boolean {
         val phone = ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-        val sms = ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        return phone && sms && (fine || coarse)
+        return phone && (fine || coarse)
     }
 
     private fun triggerHelp(silent: Boolean = false) {
@@ -1543,9 +1537,9 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
         val permissionsReady = if (silent) hasSilentEmergencyPermissions() else hasEmergencyPermissions()
         if (!permissionsReady) {
             status.text = if (silent) {
-                "Necesito permisos de SMS y ubicación."
+                "Necesito permiso de ubicación."
             } else {
-                "Necesito permisos de teléfono, SMS y ubicación."
+                "Necesito permisos de teléfono y ubicación."
             }
             showPermissionDisclosureIfNeeded()
             return
@@ -1568,33 +1562,17 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
                 .replace(Regex("[^A-Za-z0-9 ._-]"), "")
                 .trim().take(40).ifBlank { "Una persona" }
 
-            val message = "CERCA - $safeName necesita ayuda. Ubicacion: $mapsLink"
             startNetworkEmergencyAsync(silent, latitude, longitude)
 
             emergencyCallPending = !silent
-            val smsQueued = sendSmsToContacts(message)
-
             if (silent) {
                 emergencyInProgress = false
-                status.text = if (smsQueued) {
-                    "SOS silencioso enviado. Tu Red CERCA fue alertada."
-                } else {
-                    "SOS silencioso activado. No pude confirmar el SMS."
-                }
+                status.text = "SOS silencioso enviado. Tu Red CERCA fue alertada."
                 return@getCurrentLocation
             }
 
-            if (!smsQueued) {
-                Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 700L)
-            } else {
-                Handler(Looper.getMainLooper()).postDelayed({
-                    if (emergencyCallPending && sentSmsParts + failedSmsParts == 0) {
-                        appPrefs().edit().putString("last_sms_diag", "SIN CALLBACK DEL MODEM").apply()
-                        toast("El teléfono no confirmó el SMS; inicio la llamada igual.")
-                    }
-                    makeDirectCall()
-                }, 8000L)
-            }
+            status.text = "Alerta CERCA enviada. Iniciando llamada…"
+            Handler(Looper.getMainLooper()).postDelayed({ makeDirectCall() }, 700L)
         }
     }
 
@@ -1617,7 +1595,7 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
                     refreshNetworkEmergencyUiAsync(fresh)
                 }
             },
-            failure = { /* El SMS y la llamada siguen funcionando aunque falle la red CERCA. */ }
+            failure = { /* La llamada local sigue disponible aunque falle temporalmente la red CERCA. */ }
         )
     }
 
@@ -1768,10 +1746,9 @@ private fun showPermissionSettingsDialog(title: String, message: String) {
     }
 
     private fun hasSilentEmergencyPermissions(): Boolean {
-        val sms = ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        return sms && (fine || coarse)
+        return fine || coarse
     }
 
     private fun enqueueActivation() {

@@ -1,5 +1,5 @@
-const CACHE='cerca-web-v15';
-const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
+const CACHE='cerca-web-v16';
+const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
 
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).then(()=>self.skipWaiting()));
@@ -38,12 +38,16 @@ self.addEventListener('fetch',e=>{
 self.addEventListener('push',e=>{
   let d={};try{d=e.data?e.data.json():{}}catch{}
   const title=d.title||'🚨 Alerta CERCA';
+  const actions=[{action:'location',title:'📍 Ver ubicación'}];
+  if((d.medical_access||'never')!=='never')actions.push({action:'medical',title:'🩺 Información útil'});
   const o={
-    body:d.body||'Una persona de tu Red CERCA necesita ayuda.',
+    body:d.body||'Una persona de tu Red CERCA necesita ayuda. Tocá para ver su ubicación e información autorizada.',
     icon:'/icon.svg',
     badge:'/icon.svg',
     tag:d.emergency_id||'cerca-alert',
     renotify:true,
+    requireInteraction:true,
+    actions,
     data:d
   };
   e.waitUntil(self.registration.showNotification(title,o));
@@ -51,11 +55,20 @@ self.addEventListener('push',e=>{
 
 self.addEventListener('notificationclick',e=>{
   e.notification.close();
-  const id=e.notification.data?.emergency_id||'';
+  const d=e.notification.data||{};
+  const id=d.emergency_id||'';
+  const view=e.action==='medical'?'medical':e.action==='location'?'location':'';
+  const qs=new URLSearchParams();
+  if(id)qs.set('alert',id);
+  if(view)qs.set('view',view);
+  const target='/'+(qs.toString()?'?'+qs.toString():'');
   e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(ws=>{
     for(const w of ws){
-      if('focus'in w){w.postMessage({type:'open-alert',id});return w.focus()}
+      if('focus'in w){
+        w.postMessage({type:'open-alert',id,view});
+        return w.focus();
+      }
     }
-    return clients.openWindow('/'+(id?'?alert='+encodeURIComponent(id):''));
+    return clients.openWindow(target);
   }));
 });

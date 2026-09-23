@@ -1,5 +1,6 @@
 name: Generar H.E.L.P release firmado
 
+# Trigger CERCA 9.1.6 · llamada automática nativa Android
 on:
   workflow_dispatch:
   push:

@@ -1,5 +1,5 @@
-const CACHE='cerca-web-v17';
-const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
+const CACHE='cerca-web-v18';
+const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/notification-permission.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
 
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).then(()=>self.skipWaiting()));

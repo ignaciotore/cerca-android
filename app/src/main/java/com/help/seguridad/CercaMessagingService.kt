@@ -32,8 +32,9 @@ class CercaMessagingService : FirebaseMessagingService() {
             ensureChannel(context)
             val emergencyId = data["emergency_id"].orEmpty()
             val personName = data["person_name"].orEmpty().ifBlank { "Una persona de tu Red CERCA" }
+            val medicalAccess = data["medical_access"].orEmpty().ifBlank { "never" }
 
-            val alertIntent = Intent(context, EmergencyAlertActivity::class.java).apply {
+            fun alertIntent(openAction: String = ""): Intent = Intent(context, EmergencyAlertActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra("emergency_id", emergencyId)
                 putExtra("owner_user_id", data["owner_user_id"].orEmpty())
@@ -41,26 +42,40 @@ class CercaMessagingService : FirebaseMessagingService() {
                 putExtra("mode", data["mode"].orEmpty())
                 putExtra("latitude", data["latitude"].orEmpty())
                 putExtra("longitude", data["longitude"].orEmpty())
-                putExtra("medical_access", data["medical_access"].orEmpty())
+                putExtra("medical_access", medicalAccess)
+                if (openAction.isNotBlank()) putExtra("open_action", openAction)
             }
-            val pending = PendingIntent.getActivity(
+
+            fun pending(action: String, requestOffset: Int): PendingIntent = PendingIntent.getActivity(
                 context,
-                notificationId(emergencyId),
-                alertIntent,
+                notificationId(emergencyId) + requestOffset,
+                alertIntent(action),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+
+            val mainPending = pending("", 0)
+            val locationPending = pending("location", 1)
+            val medicalPending = pending("medical", 2)
 
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_cerca_launcher)
                 .setContentTitle("🚨 $personName necesita ayuda")
-                .setContentText("Tocá para ver la alerta CERCA y su ubicación.")
+                .setContentText("Abrí CERCA para ver ubicación e información útil autorizada.")
+                .setStyle(NotificationCompat.BigTextStyle().bigText(
+                    "Alerta CERCA activa. Podés ver la ubicación de $personName y, si fue autorizada, su información útil ante una emergencia."
+                ))
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setOngoing(true)
                 .setAutoCancel(false)
-                .setContentIntent(pending)
-                .setFullScreenIntent(pending, true)
+                .setContentIntent(mainPending)
+                .setFullScreenIntent(mainPending, true)
+                .addAction(0, "📍 VER UBICACIÓN", locationPending)
+
+            if (medicalAccess != "never" && data["owner_user_id"].orEmpty().isNotBlank()) {
+                builder.addAction(0, "🩺 INFORMACIÓN ÚTIL", medicalPending)
+            }
 
             if (Build.VERSION.SDK_INT < 33 ||
                 androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

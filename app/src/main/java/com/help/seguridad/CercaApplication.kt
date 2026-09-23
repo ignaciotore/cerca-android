@@ -1,8 +1,14 @@
 package com.help.seguridad
 
+import android.Manifest
 import android.app.Activity
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.appcompat.app.AlertDialog
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class CercaApplication : Application(), Application.ActivityLifecycleCallbacks {
     override fun onCreate() {
@@ -17,6 +23,32 @@ class CercaApplication : Application(), Application.ActivityLifecycleCallbacks {
             activity is QuickAccessSettingsActivity
         ) {
             EnterpriseUiController.attach(activity)
+        }
+        promptNotificationsIfNeeded(activity)
+    }
+
+    private fun promptNotificationsIfNeeded(activity: Activity) {
+        if (activity !is MainActivity) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        if (activity.intent.getBooleanExtra("cerca_notification_prompted", false)) return
+
+        activity.intent.putExtra("cerca_notification_prompted", true)
+        activity.window.decorView.post {
+            if (activity.isFinishing || activity.isDestroyed) return@post
+            AlertDialog.Builder(activity)
+                .setTitle("Activá las alertas de CERCA")
+                .setMessage("CERCA necesita permiso para mostrarte las alertas de emergencia de tu Red, incluso cuando no estás usando la app.")
+                .setCancelable(false)
+                .setPositiveButton("ACTIVAR NOTIFICACIONES") { _, _ ->
+                    ActivityCompat.requestPermissions(
+                        activity,
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        302
+                    )
+                }
+                .setNegativeButton("AHORA NO", null)
+                .show()
         }
     }
 

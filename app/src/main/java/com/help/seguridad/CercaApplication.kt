@@ -28,7 +28,7 @@ class CercaApplication : Application(), Application.ActivityLifecycleCallbacks {
     }
 
     private fun promptNotificationsIfNeeded(activity: Activity) {
-        if (activity !is MainActivity) return
+        if (activity !is MainActivity && activity !is WebAppActivity) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
         if (activity.intent.getBooleanExtra("cerca_notification_prompted", false)) return
@@ -52,9 +52,6 @@ class CercaApplication : Application(), Application.ActivityLifecycleCallbacks {
         }
     }
 
-    // MainActivity resuelve empresa/rol dentro de su propio arranque, después de inflar la UI.
-    // Evitamos consultar acá porque onActivityCreated ocurre antes de setContentView y generaba la carrera
-    // "Individual -> Empresarial" que se veía al abrir la app.
     override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit
     override fun onActivityStarted(activity: Activity) = Unit
     override fun onActivityPaused(activity: Activity) = Unit

@@ -23,6 +23,8 @@
     try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
   }
 
+  function isAndroid(){return /Android/i.test(navigator.userAgent||'')}
+
   function triggerConfiguredCall(){
     const info=callInfo();
     if(!info)return false;
@@ -33,8 +35,12 @@
       }
     }catch{}
     try{
-      // Fallback web: Android/iOS pueden abrir el marcador, pero la llamada automática
-      // real se realiza únicamente dentro de la app Android nativa.
+      if(isAndroid()){
+        // Si se abrió el acceso web/PWA pero está instalada CERCA nativa,
+        // este deep link entrega el número al módulo Android que realiza la llamada real.
+        window.location.href='cerca://call?phone='+encodeURIComponent(info.tel);
+        return true;
+      }
       window.location.href='tel:'+info.tel;
       return true;
     }catch{return false}
@@ -55,8 +61,6 @@
     startEmergency=async function(silent){
       await baseStartEmergency(silent);
       if(!silent&&typeof S!=='undefined'&&S.activeEmergency){
-        // Igual que la app Android original: una vez activado el SOS normal,
-        // la llamada al contacto configurado sale automáticamente.
         setTimeout(triggerConfiguredCall,150);
       }
     };

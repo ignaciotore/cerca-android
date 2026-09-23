@@ -19,41 +19,34 @@
     return {name,tel};
   }
 
-  function openConfiguredCall(){
+  function isNativeAndroid(){
+    try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
+  }
+
+  function triggerConfiguredCall(){
     const info=callInfo();
     if(!info)return false;
-    window.location.href='tel:'+info.tel;
-    return true;
-  }
-
-  function showCallPrompt(){
-    const info=callInfo();
-    if(!info)return;
-    const existing=document.getElementById('cercaCallPrompt');
-    if(existing)return;
-    const w=modal('<div id="cercaCallPrompt"><h2>SOS activado</h2><p>La alerta ya fue enviada a tu Red CERCA.</p><button id="cercaCallNow" class="btn danger block" style="margin-top:16px;font-size:20px;padding:18px">📞 LLAMAR A '+esc(info.name).toUpperCase()+'</button><button id="cercaCallLater" class="btn light block" style="margin-top:8px">Seguir sin llamar</button></div>');
-    const callBtn=w.querySelector('#cercaCallNow');
-    const later=w.querySelector('#cercaCallLater');
-    if(callBtn)callBtn.onclick=()=>openConfiguredCall();
-    if(later)later.onclick=()=>w.remove();
-  }
-
-  function installActiveCallButton(){
     try{
-      if(typeof S==='undefined'||!S.activeEmergency||S.activeEmergency.mode==='silent')return;
-      const info=callInfo();
-      if(!info)return;
-      const resolve=document.getElementById('resolveBtn');
-      if(!resolve||document.getElementById('activeCallBtn'))return;
-      const b=document.createElement('button');
-      b.id='activeCallBtn';
-      b.className='btn danger block';
-      b.style.margin='10px auto';
-      b.style.maxWidth='360px';
-      b.style.fontSize='18px';
-      b.textContent='📞 LLAMAR A '+String(info.name).toUpperCase();
-      b.onclick=()=>openConfiguredCall();
-      resolve.parentElement?.insertBefore(b,resolve);
+      if(isNativeAndroid()){
+        window.CercaNative.directCall(info.tel);
+        return true;
+      }
+    }catch{}
+    try{
+      // Fallback web: Android/iOS pueden abrir el marcador, pero la llamada automática
+      // real se realiza únicamente dentro de la app Android nativa.
+      window.location.href='tel:'+info.tel;
+      return true;
+    }catch{return false}
+  }
+
+  function syncNativeSession(){
+    try{
+      if(!window.CercaNative||typeof window.CercaNative.syncSession!=='function')return;
+      if(typeof S==='undefined'||!S.session?.access_token)return;
+      window.CercaNative.syncSession(String(S.session.access_token));
+      const install=document.getElementById('installAppBtn');
+      if(install)install.style.display='none';
     }catch{}
   }
 
@@ -62,18 +55,10 @@
     startEmergency=async function(silent){
       await baseStartEmergency(silent);
       if(!silent&&typeof S!=='undefined'&&S.activeEmergency){
-        installActiveCallButton();
-        setTimeout(showCallPrompt,150);
+        // Igual que la app Android original: una vez activado el SOS normal,
+        // la llamada al contacto configurado sale automáticamente.
+        setTimeout(triggerConfiguredCall,150);
       }
-    };
-  }
-
-  if(typeof renderDashboard==='function'){
-    const baseRenderDashboard=renderDashboard;
-    renderDashboard=function(){
-      const r=baseRenderDashboard.apply(this,arguments);
-      setTimeout(installActiveCallButton,0);
-      return r;
     };
   }
 
@@ -100,12 +85,12 @@
     tries++;
     if(typeof S!=='undefined'&&S.user){
       clearInterval(wait);
+      syncNativeSession();
       try{if(typeof startPolling==='function')startPolling()}catch{}
-      installActiveCallButton();
       refreshIncoming();
     }else if(tries>120){clearInterval(wait)}
   },500);
 
-  window.addEventListener('focus',()=>{installActiveCallButton();refreshIncoming()});
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){installActiveCallButton();refreshIncoming()}});
+  window.addEventListener('focus',()=>{syncNativeSession();refreshIncoming()});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){syncNativeSession();refreshIncoming()}});
 })();

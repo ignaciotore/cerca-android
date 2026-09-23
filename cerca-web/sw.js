@@ -1,5 +1,5 @@
-const CACHE='cerca-web-v20';
-const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/network-invite-cleanup.js','/notification-permission.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
+const CACHE='cerca-web-v21';
+const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/network-invite-cleanup.js','/notification-permission.js','/web-push-fix.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
 
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).then(()=>self.skipWaiting()));
@@ -38,15 +38,16 @@ self.addEventListener('fetch',e=>{
 self.addEventListener('push',e=>{
   let d={};try{d=e.data?e.data.json():{}}catch{}
   const title=d.title||'🚨 Alerta CERCA';
-  const actions=[{action:'location',title:'📍 Ver ubicación'}];
-  if((d.medical_access||'never')!=='never')actions.push({action:'medical',title:'🩺 Información útil'});
+  const isResolved=d.event==='resolved';
+  const actions=isResolved?[]:[{action:'location',title:'📍 Ver ubicación'}];
+  if(!isResolved&&(d.medical_access||'never')!=='never')actions.push({action:'medical',title:'🩺 Información útil'});
   const o={
-    body:d.body||'Una persona de tu Red CERCA necesita ayuda. Tocá para ver su ubicación e información autorizada.',
+    body:d.body||(isResolved?'La emergencia fue finalizada.':'Una persona de tu Red CERCA necesita ayuda. Tocá para ver su ubicación e información autorizada.'),
     icon:'/icon.svg',
     badge:'/icon.svg',
-    tag:d.emergency_id||'cerca-alert',
+    tag:(d.emergency_id||'cerca-alert')+(isResolved?'-resolved':''),
     renotify:true,
-    requireInteraction:true,
+    requireInteraction:!isResolved,
     actions,
     data:d
   };

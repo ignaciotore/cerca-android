@@ -13,7 +13,6 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -24,14 +23,13 @@ class WebAppActivity : AppCompatActivity() {
         private const val WEB_URL = "https://cerca-seguridad.pages.dev/"
         private const val REQ_CALL = 4101
         private const val REQ_LOCATION = 4102
-        private const val PREFS = "cerca_native_bridge"
-        private const val CALL_INTRO_SHOWN = "call_intro_shown"
     }
 
     private lateinit var webView: WebView
     private var pendingCallPhone: String? = null
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
+    private var callPermissionRequestedThisSession = false
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +41,7 @@ class WebAppActivity : AppCompatActivity() {
             settings.databaseEnabled = true
             settings.setGeolocationEnabled(true)
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/2"
+            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/3"
             addJavascriptInterface(CercaNativeBridge(), "CercaNative")
             webChromeClient = object : WebChromeClient() {
                 override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
@@ -53,7 +51,11 @@ class WebAppActivity : AppCompatActivity() {
                     } else {
                         pendingGeoOrigin = origin
                         pendingGeoCallback = callback
-                        ActivityCompat.requestPermissions(this@WebAppActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), REQ_LOCATION)
+                        ActivityCompat.requestPermissions(
+                            this@WebAppActivity,
+                            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                            REQ_LOCATION
+                        )
                     }
                 }
             }
@@ -62,6 +64,7 @@ class WebAppActivity : AppCompatActivity() {
                     val uri = request?.url ?: return false
                     return handleNavigation(uri)
                 }
+
                 @Deprecated("Deprecated in Java")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                     val uri = url?.let(Uri::parse) ?: return false
@@ -71,7 +74,6 @@ class WebAppActivity : AppCompatActivity() {
         }
 
         setContentView(webView)
-        maybeExplainCallPermission()
         handleIncomingIntent(intent)
     }
 
@@ -84,6 +86,21 @@ class WebAppActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         NativePushRegistrar.registerLatest(applicationContext)
+
+        // No mandamos al usuario a Ajustes. Android muestra su diálogo estándar una sola vez
+        // dentro de CERCA y, si se acepta, queda habilitada la llamada automática.
+        if (!callPermissionRequestedThisSession &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED
+        ) {
+            callPermissionRequestedThisSession = true
+            webView.postDelayed({
+                if (!isFinishing && !isDestroyed &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL)
+                }
+            }, 900)
+        }
     }
 
     private fun handleIncomingIntent(intent: Intent) {
@@ -133,22 +150,6 @@ class WebAppActivity : AppCompatActivity() {
         webView.loadUrl(target)
     }
 
-    private fun maybeExplainCallPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) return
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        if (prefs.getBoolean(CALL_INTRO_SHOWN, false)) return
-        prefs.edit().putBoolean(CALL_INTRO_SHOWN, true).apply()
-        webView.post {
-            if (isFinishing || isDestroyed) return@post
-            AlertDialog.Builder(this)
-                .setTitle("Activá la llamada automática")
-                .setMessage("CERCA necesita permiso para llamar automáticamente a tu contacto cuando activás un SOS normal. El SOS silencioso nunca realiza llamadas.")
-                .setPositiveButton("ACTIVAR") { _, _ -> ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL) }
-                .setNegativeButton("MÁS TARDE", null)
-                .show()
-        }
-    }
-
     private fun normalizePhone(raw: String): String {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return ""
@@ -160,11 +161,14 @@ class WebAppActivity : AppCompatActivity() {
     private fun startDirectCall(rawPhone: String) {
         val phone = normalizePhone(rawPhone)
         if (phone.isBlank()) return
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
             pendingCallPhone = phone
+            callPermissionRequestedThisSession = true
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL)
             return
         }
+
         val uri = Uri.fromParts("tel", phone, null)
         try {
             val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
@@ -172,10 +176,11 @@ class WebAppActivity : AppCompatActivity() {
             return
         } catch (_: Exception) {
         }
+
         try {
             startActivity(Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Exception) {
-            // No abrimos ACTION_DIAL: si Android no permite la llamada directa, la app no debe dejar al usuario en el teclado.
+            // Sin ACTION_DIAL: el SOS no debe dejar al usuario en el teclado.
         }
     }
 
@@ -184,6 +189,7 @@ class WebAppActivity : AppCompatActivity() {
         when (requestCode) {
             REQ_CALL -> {
                 val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                notifyCallPermissionToWeb(granted)
                 val pending = pendingCallPhone
                 pendingCallPhone = null
                 if (granted && !pending.isNullOrBlank()) startDirectCall(pending)
@@ -199,6 +205,12 @@ class WebAppActivity : AppCompatActivity() {
         }
     }
 
+    private fun notifyCallPermissionToWeb(granted: Boolean) {
+        if (!::webView.isInitialized) return
+        val js = "window.dispatchEvent(new CustomEvent('cerca-call-permission',{detail:{granted:${if (granted) "true" else "false"}}}));"
+        webView.post { webView.evaluateJavascript(js, null) }
+    }
+
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (::webView.isInitialized && webView.canGoBack()) webView.goBack() else super.onBackPressed()
@@ -210,6 +222,22 @@ class WebAppActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun syncSession(accessToken: String) { NativePushRegistrar.saveAccessToken(applicationContext, accessToken) }
+
+        @JavascriptInterface
+        fun hasCallPermission(): Boolean =
+            ContextCompat.checkSelfPermission(this@WebAppActivity, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+
+        @JavascriptInterface
+        fun requestCallPermission() {
+            runOnUiThread {
+                if (ContextCompat.checkSelfPermission(this@WebAppActivity, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                    notifyCallPermissionToWeb(true)
+                } else {
+                    callPermissionRequestedThisSession = true
+                    ActivityCompat.requestPermissions(this@WebAppActivity, arrayOf(Manifest.permission.CALL_PHONE), REQ_CALL)
+                }
+            }
+        }
 
         @JavascriptInterface
         fun isNativeAndroid(): Boolean = true

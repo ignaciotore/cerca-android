@@ -32,7 +32,7 @@
         const install=document.getElementById('installAppBtn');
         if(install)install.style.display='none';
       }else if(/Android/i.test(navigator.userAgent||'')){
-        p.textContent='VERSIÓN WEB';
+        p.textContent='CERCA WEB';
       }
     }catch{}
   }
@@ -68,16 +68,9 @@
   async function callNow(){
     const phone=await getCallPhone();
     if(!phone)return false;
-
-    if(isNativeContainer()&&tryNativeCall(phone))return true;
-
-    try{
-      if(/Android/i.test(navigator.userAgent||'')){
-        location.href='cerca://call?phone='+encodeURIComponent(phone);
-        return true;
-      }
-    }catch{}
-    return false;
+    // La llamada celular directa queda exclusivamente en el contenedor Android,
+    // donde CERCA tiene CALL_PHONE. La PWA web (Android/iPhone) usa el puente VoIP.
+    return isNativeContainer()&&tryNativeCall(phone);
   }
 
   if(typeof startEmergency==='function'&&!startEmergency.__cercaImmediateCall){

@@ -427,7 +427,9 @@ class WebAppActivity : AppCompatActivity() {
     inner class CercaNativeBridge {
         @JavascriptInterface
         fun directCall(phone: String) {
-            runOnUiThread { startDirectCall(phone, null) }
+            // La web no llama a ciegas. Android resuelve el SOS activo, obtiene su ID
+            // y usa el guardado LAST_CALLED_EMERGENCY para permitir una sola llamada.
+            nativeHandler.post { checkEmergencyNatively() }
         }
 
         @JavascriptInterface

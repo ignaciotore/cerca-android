@@ -30,11 +30,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Primero usamos la firma nativa de Apple si el runner tiene iCloud.
           if shortcuts sign --mode anyone --input build/CERCA-SOS.unsigned.shortcut --output build/CERCA-SOS.shortcut 2>/tmp/cerca-sign-error.log; then
             echo 'Firma nativa Apple completada.'
           else
-            echo 'Runner sin sesión iCloud; usando el servicio de firma de RoutineHub.'
+            echo 'Runner sin sesión iCloud; usando RoutineHub HubSign.'
             cat /tmp/cerca-sign-error.log || true
             python3 - <<'PY'
           import json
@@ -48,10 +47,7 @@ jobs:
             curl --fail --silent --show-error --location \
               'https://hubsign.routinehub.services/sign' \
               -H 'Content-Type: application/json' \
-              -H 'Accept: application/octet-stream' \
-              -H 'Origin: https://routinehub.co' \
-              -H 'Referer: https://routinehub.co/' \
-              -H 'User-Agent: CERCA-Shortcut-Builder/1.0' \
+              -H 'User-Agent: cherri/2.0.0' \
               --data-binary @build/hubsign-request.json \
               --output build/CERCA-SOS.shortcut
           fi

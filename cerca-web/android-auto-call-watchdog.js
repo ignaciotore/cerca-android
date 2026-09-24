@@ -23,9 +23,15 @@
     return mode!=='silent'&&status!=='resolved'&&status!=='closed'&&status!=='finished';
   }
 
-  function isNative(){
+  function hasBridge(){
     try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
   }
+
+  function isNativeShell(){
+    try{return /CERCA-Native-Android/i.test(navigator.userAgent||'')}catch{return false}
+  }
+
+  function canCallNatively(){return isNativeShell()||hasBridge()}
 
   function localPhone(){
     try{
@@ -49,9 +55,7 @@
     }catch{return ''}
   }
 
-  async function phoneForCall(){
-    return localPhone()||await backendPhone();
-  }
+  async function phoneForCall(){return localPhone()||await backendPhone()}
 
   function markConfirmed(key){
     if(!key)return;
@@ -59,41 +63,57 @@
     busy=false;
   }
 
+  function dispatchNativeCall(phone){
+    try{
+      // En la app Android real preferimos el esquema interno. WebAppActivity ya
+      // intercepta cerca://call y ejecuta startDirectCall() nativamente.
+      if(isNativeShell()){
+        window.location.href='cerca://call?phone='+encodeURIComponent(phone);
+        return true;
+      }
+      if(hasBridge()){
+        window.CercaNative.directCall(phone);
+        return true;
+      }
+    }catch{}
+    return false;
+  }
+
   async function trigger(e){
-    if(!isNative())return;
+    if(!canCallNatively())return;
     const key=emergencyKey(e);
     if(!key||key===confirmedKey)return;
-    if(Date.now()-lastAttemptAt<5000)return;
+    if(Date.now()-lastAttemptAt<4500)return;
     lastAttemptAt=Date.now();
     busy=true;
 
     const phone=await phoneForCall();
     if(!phone){busy=false;return}
 
-    try{
-      window.CercaNative.directCall(phone);
-    }catch{
+    if(!dispatchNativeCall(phone)){
       busy=false;
       return;
     }
 
+    // Si Android abre permiso o llamada, la actividad cambia de foco/visibilidad.
+    // Si nada ocurre, liberamos el intento para volver a disparar.
     setTimeout(()=>{
       if(document.visibilityState==='hidden')markConfirmed(key);
       else busy=false;
-    },2500);
+    },2200);
   }
 
   async function tick(){
-    if(busy||!isNative())return;
+    if(busy||!canCallNatively())return;
     try{
       if(typeof S==='undefined'||!isNormalActive(S.activeEmergency))return;
       await trigger(S.activeEmergency);
     }catch{busy=false}
   }
 
-  setInterval(tick,800);
-  window.addEventListener('focus',()=>setTimeout(tick,300));
+  setInterval(tick,700);
+  window.addEventListener('focus',()=>setTimeout(tick,250));
   document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState==='visible')setTimeout(tick,350);
+    if(document.visibilityState==='visible')setTimeout(tick,300);
   });
 })();

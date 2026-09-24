@@ -12,6 +12,9 @@
 /app.js
   Cache-Control: no-cache, must-revalidate
 
+/android-auto-call-watchdog.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
 /pwa.js
   Cache-Control: no-cache, must-revalidate
 

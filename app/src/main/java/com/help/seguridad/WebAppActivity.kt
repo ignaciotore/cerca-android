@@ -67,7 +67,7 @@ class WebAppActivity : AppCompatActivity() {
             settings.databaseEnabled = true
             settings.setGeolocationEnabled(true)
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/7"
+            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/8"
             addJavascriptInterface(CercaNativeBridge(), "CercaNative")
             webChromeClient = object : WebChromeClient() {
                 override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
@@ -143,10 +143,28 @@ class WebAppActivity : AppCompatActivity() {
         val script = """
             (function(){
               try {
-                var p=document.getElementById('connectionPill');
-                if(p)p.textContent='APP ANDROID NATIVA $version';
-                var i=document.getElementById('installAppBtn');
-                if(i)i.style.display='none';
+                var label='APP ANDROID NATIVA $version';
+                window.__CERCA_NATIVE_ANDROID__=true;
+                window.__CERCA_NATIVE_VERSION__='$version';
+                if(document.documentElement) document.documentElement.setAttribute('data-cerca-native-android','true');
+
+                function applyNativeMarker(){
+                  try {
+                    var p=document.getElementById('connectionPill');
+                    if(p && p.textContent!==label) p.textContent=label;
+                    var i=document.getElementById('installAppBtn');
+                    if(i)i.style.display='none';
+                  } catch(e) {}
+                }
+
+                applyNativeMarker();
+                if(!window.__cercaNativeMarkerObserver && document.documentElement){
+                  window.__cercaNativeMarkerObserver=new MutationObserver(function(){ applyNativeMarker(); });
+                  window.__cercaNativeMarkerObserver.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+                }
+                if(!window.__cercaNativeMarkerTimer){
+                  window.__cercaNativeMarkerTimer=setInterval(applyNativeMarker,250);
+                }
               } catch(e) {}
             })();
         """.trimIndent()
@@ -164,10 +182,36 @@ class WebAppActivity : AppCompatActivity() {
         val script = """
             (function(){
               try {
-                var raw=localStorage.getItem('$SESSION_STORAGE_KEY');
-                if(!raw)return '';
-                var s=JSON.parse(raw);
-                return (s&&s.access_token)?String(s.access_token):'';
+                function tokenFromValue(value){
+                  if(!value)return '';
+                  try {
+                    var x=JSON.parse(value);
+                    if(x && typeof x==='object'){
+                      if(typeof x.access_token==='string' && x.access_token)return x.access_token;
+                      if(x.currentSession && typeof x.currentSession.access_token==='string')return x.currentSession.access_token;
+                      if(x.session && typeof x.session.access_token==='string')return x.session.access_token;
+                      if(x.data && x.data.session && typeof x.data.session.access_token==='string')return x.data.session.access_token;
+                    }
+                  } catch(e) {}
+                  var m=String(value).match(/\"access_token\"\s*:\s*\"([^\"]+)\"/);
+                  return m?m[1]:'';
+                }
+
+                var preferred=localStorage.getItem('$SESSION_STORAGE_KEY');
+                var t=tokenFromValue(preferred);
+                if(t)return t;
+
+                var stores=[localStorage,sessionStorage];
+                for(var s=0;s<stores.length;s++){
+                  var storage=stores[s];
+                  for(var i=0;i<storage.length;i++){
+                    var key=storage.key(i);
+                    var value=storage.getItem(key);
+                    t=tokenFromValue(value);
+                    if(t)return t;
+                  }
+                }
+                return '';
               }catch(e){return '';}
             })();
         """.trimIndent()

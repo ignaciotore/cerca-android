@@ -285,6 +285,8 @@ class WebAppActivity : AppCompatActivity() {
         val phone = normalizePhone(rawPhone)
         if (phone.isBlank()) return
 
+        if (!emergencyId.isNullOrBlank() && emergencyId == lastCalledEmergency()) return
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
             pendingCallPhone = phone
             pendingCallEmergencyId = emergencyId
@@ -292,13 +294,17 @@ class WebAppActivity : AppCompatActivity() {
             return
         }
 
+        // Mark BEFORE opening the Phone app. The Activity can pause immediately after startActivity(),
+        // and a one-second watchdog must never see the same SOS as uncalled during that transition.
+        if (!emergencyId.isNullOrBlank()) markEmergencyCalled(emergencyId)
+
         try {
             val callIntent = Intent(Intent.ACTION_CALL).apply {
                 data = Uri.parse("tel:$phone")
             }
             startActivity(callIntent)
-            if (!emergencyId.isNullOrBlank()) markEmergencyCalled(emergencyId)
         } catch (_: Exception) {
+            if (!emergencyId.isNullOrBlank()) clearEmergencyCalled(emergencyId)
             Toast.makeText(this, "No pude iniciar la llamada automática.", Toast.LENGTH_LONG).show()
         }
     }
@@ -308,6 +314,13 @@ class WebAppActivity : AppCompatActivity() {
             .edit()
             .putString(LAST_CALLED_EMERGENCY, emergencyId)
             .apply()
+    }
+
+    private fun clearEmergencyCalled(emergencyId: String) {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (prefs.getString(LAST_CALLED_EMERGENCY, "").orEmpty() == emergencyId) {
+            prefs.edit().remove(LAST_CALLED_EMERGENCY).apply()
+        }
     }
 
     private fun lastCalledEmergency(): String =
@@ -353,7 +366,7 @@ class WebAppActivity : AppCompatActivity() {
                     if (!isFinishing && !isDestroyed && resumed) startDirectCall(phone, emergencyId)
                 }
             } catch (_: Throwable) {
-                // Se vuelve a intentar mientras la emergencia normal siga activa.
+                // Se vuelve a intentar mientras la emergencia normal siga activa, salvo que ya se haya llamado.
             } finally {
                 nativeWatchBusy.set(false)
             }

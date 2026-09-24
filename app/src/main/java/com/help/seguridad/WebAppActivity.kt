@@ -34,6 +34,9 @@ class WebAppActivity : AppCompatActivity() {
         private const val WATCH_INTERVAL_MS = 1000L
         private const val PREFS = "cerca_native_bridge"
         private const val LAST_CALLED_EMERGENCY = "last_called_emergency"
+        private const val WEB_CALL_LATCH = "web_call_latch"
+        private const val WEB_CALL_LATCH_AT = "web_call_latch_at"
+        private const val WEB_CALL_LATCH_GRACE_MS = 15000L
         private const val SESSION_STORAGE_KEY = "cerca_web_session_v1"
     }
 
@@ -328,6 +331,23 @@ class WebAppActivity : AppCompatActivity() {
             .getString(LAST_CALLED_EMERGENCY, "")
             .orEmpty()
 
+    private fun webCallLatched(): Boolean =
+        getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(WEB_CALL_LATCH, false)
+
+    private fun webCallLatchAt(): Long =
+        getSharedPreferences(PREFS, MODE_PRIVATE).getLong(WEB_CALL_LATCH_AT, 0L)
+
+    private fun setWebCallLatched(active: Boolean) {
+        val edit = getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+        if (active) {
+            edit.putBoolean(WEB_CALL_LATCH, true)
+                .putLong(WEB_CALL_LATCH_AT, System.currentTimeMillis())
+        } else {
+            edit.remove(WEB_CALL_LATCH).remove(WEB_CALL_LATCH_AT)
+        }
+        edit.apply()
+    }
+
     private fun checkEmergencyNatively() {
         val accessToken = currentAccessToken.trim()
         if (accessToken.isBlank() || !nativeWatchBusy.compareAndSet(false, true)) return
@@ -347,9 +367,25 @@ class WebAppActivity : AppCompatActivity() {
                     accessToken
                 )
                 val emergencies = JSONArray(emergencyJson)
-                if (emergencies.length() == 0) return@execute
+                if (emergencies.length() == 0) {
+                    val latchedAt = webCallLatchAt()
+                    if (webCallLatched() && latchedAt > 0L && System.currentTimeMillis() - latchedAt > WEB_CALL_LATCH_GRACE_MS) {
+                        setWebCallLatched(false)
+                    }
+                    return@execute
+                }
                 val emergencyId = emergencies.getJSONObject(0).optString("id", "")
-                if (emergencyId.isBlank() || emergencyId == lastCalledEmergency()) return@execute
+                if (emergencyId.isBlank()) return@execute
+                if (emergencyId == lastCalledEmergency()) {
+                    if (!webCallLatched()) setWebCallLatched(true)
+                    return@execute
+                }
+                if (webCallLatched()) {
+                    // La llamada ya salió directamente desde el puente web.
+                    // Asociamos ese disparo al ID real del SOS para impedir cualquier redial.
+                    markEmergencyCalled(emergencyId)
+                    return@execute
+                }
 
                 val contactsJson = httpGet(
                     "${SupabaseApi.BASE_URL}/rest/v1/cerca_contacts_v2" +
@@ -427,9 +463,16 @@ class WebAppActivity : AppCompatActivity() {
     inner class CercaNativeBridge {
         @JavascriptInterface
         fun directCall(phone: String) {
-            // La web no llama a ciegas. Android resuelve el SOS activo, obtiene su ID
-            // y usa el guardado LAST_CALLED_EMERGENCY para permitir una sola llamada.
-            nativeHandler.post { checkEmergencyNatively() }
+            val clean = normalizePhone(phone)
+            if (clean.isBlank() || webCallLatched()) return
+
+            // Primero cerramos el candado y después abrimos la app Teléfono.
+            // Así la llamada sale en el acto y cualquier repetición de la web queda ignorada.
+            setWebCallLatched(true)
+            runOnUiThread { startDirectCall(clean, null) }
+
+            // En paralelo asociamos esta llamada con el ID real de la emergencia.
+            nativeHandler.postDelayed({ checkEmergencyNatively() }, 300L)
         }
 
         @JavascriptInterface

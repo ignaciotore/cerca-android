@@ -1,6 +1,6 @@
 name: Generar H.E.L.P release firmado
 
-# Trigger CERCA 9.1.8 · permiso de llamada integrado dentro de la app
+# Trigger CERCA 9.1.9 · arranque estable y permiso de llamada al primer SOS
 on:
   workflow_dispatch:
   push:

@@ -15,6 +15,16 @@
 /emergency-runtime-fix.js
   Cache-Control: no-cache, no-store, must-revalidate
 
+/ios-shortcut-call.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/ios-shortcut-config.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/CERCA-SOS.shortcut
+  Content-Type: application/x-apple-shortcut
+  Cache-Control: no-cache, must-revalidate
+
 /web-voice-call.js
   Cache-Control: no-cache, no-store, must-revalidate
 

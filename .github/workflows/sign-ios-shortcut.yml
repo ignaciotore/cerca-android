@@ -19,22 +19,47 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verificar Shortcuts CLI
-        run: |
-          sw_vers
-          which shortcuts
-          shortcuts help || true
-
       - name: Preparar archivo del atajo
         run: |
           mkdir -p build
+          plutil -lint ios-shortcuts/CERCA-SOS.shortcut.plist
           plutil -convert binary1 ios-shortcuts/CERCA-SOS.shortcut.plist -o build/CERCA-SOS.unsigned.shortcut
-          plutil -lint build/CERCA-SOS.unsigned.shortcut
 
       - name: Firmar para cualquier usuario
+        shell: bash
         run: |
-          shortcuts sign --mode anyone --input build/CERCA-SOS.unsigned.shortcut --output build/CERCA-SOS.shortcut
+          set -euo pipefail
+
+          # Primero usamos la firma nativa de Apple si el runner tiene iCloud.
+          if shortcuts sign --mode anyone --input build/CERCA-SOS.unsigned.shortcut --output build/CERCA-SOS.shortcut 2>/tmp/cerca-sign-error.log; then
+            echo 'Firma nativa Apple completada.'
+          else
+            echo 'Runner sin sesión iCloud; usando el servicio de firma de RoutineHub.'
+            cat /tmp/cerca-sign-error.log || true
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          src = Path('ios-shortcuts/CERCA-SOS.shortcut.plist').read_text(encoding='utf-8')
+          Path('build/hubsign-request.json').write_text(
+              json.dumps({'shortcutName': 'CERCA SOS', 'shortcut': src}, ensure_ascii=False),
+              encoding='utf-8'
+          )
+          PY
+            curl --fail --silent --show-error --location \
+              'https://hubsign.routinehub.services/sign' \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/octet-stream' \
+              -H 'Origin: https://routinehub.co' \
+              -H 'Referer: https://routinehub.co/' \
+              -H 'User-Agent: CERCA-Shortcut-Builder/1.0' \
+              --data-binary @build/hubsign-request.json \
+              --output build/CERCA-SOS.shortcut
+          fi
+
           test -s build/CERCA-SOS.shortcut
+          MAGIC="$(xxd -p -l 4 build/CERCA-SOS.shortcut | tr '[:lower:]' '[:upper:]')"
+          echo "Magic: $MAGIC"
+          test "$MAGIC" = '41454131'
 
       - name: Publicar atajo firmado en CERCA
         run: |

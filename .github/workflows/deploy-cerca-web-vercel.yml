@@ -2,6 +2,11 @@ name: Deploy CERCA Web to Vercel
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "cerca-web/**"
+      - ".github/workflows/deploy-cerca-web-vercel.yml"
 
 permissions:
   contents: read

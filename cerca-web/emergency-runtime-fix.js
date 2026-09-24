@@ -1,51 +1,4 @@
 (()=>{
-  function cleanTel(raw){
-    const s=String(raw||'').trim();
-    const plus=s.startsWith('+')?'+':'';
-    return plus+s.replace(/\D/g,'');
-  }
-
-  function currentCallContact(){
-    try{return typeof designatedCall==='function'?designatedCall():null}catch{return null}
-  }
-
-  function callInfo(){
-    const c=currentCallContact();
-    if(!c)return null;
-    const phone=(typeof first==='function'?first(c,'phone_e164','phone','target_phone','contact_phone'):null)||c.phone_e164||c.phone||'';
-    const tel=cleanTel(phone);
-    if(!tel)return null;
-    const name=c.display_name||c.full_name||c.name||'contacto de llamada';
-    return {name,tel};
-  }
-
-  function isNativeAndroid(){
-    try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
-  }
-
-  function isAndroid(){return /Android/i.test(navigator.userAgent||'')}
-
-  function triggerConfiguredCall(){
-    const info=callInfo();
-    if(!info)return false;
-    try{
-      if(isNativeAndroid()){
-        window.CercaNative.directCall(info.tel);
-        return true;
-      }
-    }catch{}
-    try{
-      if(isAndroid()){
-        // Si se abrió el acceso web/PWA pero está instalada CERCA nativa,
-        // este deep link entrega el número al módulo Android que realiza la llamada real.
-        window.location.href='cerca://call?phone='+encodeURIComponent(info.tel);
-        return true;
-      }
-      window.location.href='tel:'+info.tel;
-      return true;
-    }catch{return false}
-  }
-
   function syncNativeSession(){
     try{
       if(!window.CercaNative||typeof window.CercaNative.syncSession!=='function')return;
@@ -56,15 +9,8 @@
     }catch{}
   }
 
-  if(typeof startEmergency==='function'){
-    const baseStartEmergency=startEmergency;
-    startEmergency=async function(silent){
-      await baseStartEmergency(silent);
-      if(!silent&&typeof S!=='undefined'&&S.activeEmergency){
-        setTimeout(triggerConfiguredCall,150);
-      }
-    };
-  }
+  // La llamada automática se maneja exclusivamente en android-auto-call-watchdog.js.
+  // No usamos tel: ni deep links desde la web/PWA para evitar bucles y duplicados.
 
   async function refreshIncoming(){
     try{

@@ -1,8 +1,9 @@
 (()=>{
   const ua=navigator.userAgent||'';
   const ios=/iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const android=/Android/i.test(ua);
   const nativeAndroid=/CERCA-Native-Android/i.test(ua)||window.__CERCA_NATIVE_ANDROID__===true||!!window.CercaNative;
-  if(!ios||nativeAndroid)return;
+  if((!ios&&!android)||nativeAndroid)return;
 
   const SDK_URL='https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.18.5/dist/twilio.min.js';
   const CALL_KEY='cerca_web_voice_called_v1:';
@@ -54,7 +55,7 @@
   }
 
   function installWrapper(){
-    if(typeof startEmergency!=='function'||startEmergency.__cercaIosVoice)return false;
+    if(typeof startEmergency!=='function'||startEmergency.__cercaWebVoice)return false;
     const previous=startEmergency;
     const wrapped=async function(silent){
       const result=await previous(silent);
@@ -66,15 +67,15 @@
       }catch{}
       return result;
     };
-    wrapped.__cercaIosVoice=true;
+    wrapped.__cercaWebVoice=true;
     startEmergency=wrapped;
     return true;
   }
 
   let n=0;const t=setInterval(()=>{n++;if(installWrapper()||n>120)clearInterval(t)},250);
 
-  // Preparamos el permiso de micrófono cuando la persona elige el contacto de llamada.
-  // Es una autorización única de iOS; no agrega un segundo botón durante cada SOS.
+  // El permiso de micrófono se prepara al elegir el contacto de llamada.
+  // Es una autorización única del teléfono; no agrega un segundo botón durante cada SOS.
   document.addEventListener('click',e=>{
     const el=e.target?.closest?.('[data-make-call]');if(!el||!navigator.mediaDevices?.getUserMedia)return;
     navigator.mediaDevices.getUserMedia({audio:true}).then(s=>s.getTracks().forEach(t=>t.stop())).catch(()=>{});

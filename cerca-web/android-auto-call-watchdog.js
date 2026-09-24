@@ -23,15 +23,13 @@
     return mode!=='silent'&&status!=='resolved'&&status!=='closed'&&status!=='finished';
   }
 
+  function isAndroid(){
+    try{return /Android/i.test(navigator.userAgent||'')}catch{return false}
+  }
+
   function hasBridge(){
     try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
   }
-
-  function isNativeShell(){
-    try{return /CERCA-Native-Android/i.test(navigator.userAgent||'')}catch{return false}
-  }
-
-  function canCallNatively(){return isNativeShell()||hasBridge()}
 
   function localPhone(){
     try{
@@ -65,9 +63,10 @@
 
   function dispatchNativeCall(phone){
     try{
-      // En la app Android real preferimos el esquema interno. WebAppActivity ya
-      // intercepta cerca://call y ejecuta startDirectCall() nativamente.
-      if(isNativeShell()){
+      // En cualquier Android usamos el esquema interno de CERCA. Si estamos
+      // dentro del WebView, WebAppActivity lo intercepta. Si estamos en PWA/
+      // navegador, Android abre la app nativa instalada y le entrega el número.
+      if(isAndroid()){
         window.location.href='cerca://call?phone='+encodeURIComponent(phone);
         return true;
       }
@@ -80,7 +79,7 @@
   }
 
   async function trigger(e){
-    if(!canCallNatively())return;
+    if(!isAndroid()&&!hasBridge())return;
     const key=emergencyKey(e);
     if(!key||key===confirmedKey)return;
     if(Date.now()-lastAttemptAt<4500)return;
@@ -95,8 +94,6 @@
       return;
     }
 
-    // Si Android abre permiso o llamada, la actividad cambia de foco/visibilidad.
-    // Si nada ocurre, liberamos el intento para volver a disparar.
     setTimeout(()=>{
       if(document.visibilityState==='hidden')markConfirmed(key);
       else busy=false;
@@ -104,7 +101,7 @@
   }
 
   async function tick(){
-    if(busy||!canCallNatively())return;
+    if(busy)return;
     try{
       if(typeof S==='undefined'||!isNormalActive(S.activeEmergency))return;
       await trigger(S.activeEmergency);

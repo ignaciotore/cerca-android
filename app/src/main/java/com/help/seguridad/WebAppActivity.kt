@@ -34,6 +34,7 @@ class WebAppActivity : AppCompatActivity() {
         private const val WATCH_INTERVAL_MS = 1000L
         private const val PREFS = "cerca_native_bridge"
         private const val LAST_CALLED_EMERGENCY = "last_called_emergency"
+        private const val SESSION_STORAGE_KEY = "cerca_web_session_v1"
     }
 
     private lateinit var webView: WebView
@@ -51,7 +52,7 @@ class WebAppActivity : AppCompatActivity() {
 
     private val nativeWatchdog = object : Runnable {
         override fun run() {
-            if (resumed) checkEmergencyNatively()
+            if (resumed) syncSessionFromWebStorage()
             nativeHandler.postDelayed(this, WATCH_INTERVAL_MS)
         }
     }
@@ -66,7 +67,7 @@ class WebAppActivity : AppCompatActivity() {
             settings.databaseEnabled = true
             settings.setGeolocationEnabled(true)
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/6"
+            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/7"
             addJavascriptInterface(CercaNativeBridge(), "CercaNative")
             webChromeClient = object : WebChromeClient() {
                 override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
@@ -95,6 +96,12 @@ class WebAppActivity : AppCompatActivity() {
                     val uri = url?.let(Uri::parse) ?: return false
                     return handleNavigation(uri)
                 }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    injectNativeMarker()
+                    syncSessionFromWebStorage()
+                }
             }
         }
 
@@ -115,6 +122,7 @@ class WebAppActivity : AppCompatActivity() {
         try { NativePushRegistrar.registerLatest(applicationContext) } catch (_: Throwable) {}
         nativeHandler.removeCallbacks(nativeWatchdog)
         nativeHandler.post(nativeWatchdog)
+        if (::webView.isInitialized) webView.post { syncSessionFromWebStorage() }
     }
 
     override fun onPause() {
@@ -127,6 +135,53 @@ class WebAppActivity : AppCompatActivity() {
         nativeHandler.removeCallbacksAndMessages(null)
         nativeExecutor.shutdownNow()
         super.onDestroy()
+    }
+
+    private fun injectNativeMarker() {
+        if (!::webView.isInitialized) return
+        val version = BuildConfig.VERSION_NAME.replace("'", "")
+        val script = """
+            (function(){
+              try {
+                var p=document.getElementById('connectionPill');
+                if(p)p.textContent='APP ANDROID NATIVA $version';
+                var i=document.getElementById('installAppBtn');
+                if(i)i.style.display='none';
+              } catch(e) {}
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(script, null)
+    }
+
+    private fun decodeJsString(raw: String?): String {
+        if (raw.isNullOrBlank() || raw == "null" || raw == "undefined") return ""
+        return try { JSONArray("[$raw]").optString(0, "") } catch (_: Throwable) { "" }
+    }
+
+    private fun syncSessionFromWebStorage() {
+        if (!::webView.isInitialized) return
+        injectNativeMarker()
+        val script = """
+            (function(){
+              try {
+                var raw=localStorage.getItem('$SESSION_STORAGE_KEY');
+                if(!raw)return '';
+                var s=JSON.parse(raw);
+                return (s&&s.access_token)?String(s.access_token):'';
+              }catch(e){return '';}
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(script) { raw ->
+            val token = decodeJsString(raw).trim()
+            if (token.isNotBlank()) {
+                if (token != currentAccessToken) {
+                    currentAccessToken = token
+                    cachedUserId = ""
+                    try { NativePushRegistrar.saveAccessToken(applicationContext, token) } catch (_: Throwable) {}
+                }
+                checkEmergencyNatively()
+            }
+        }
     }
 
     private fun handleIncomingIntent(intent: Intent) {
@@ -182,7 +237,6 @@ class WebAppActivity : AppCompatActivity() {
         return if (trimmed.startsWith("+")) "+$digits" else digits
     }
 
-    // Mismo mecanismo que usaba la CERCA nativa anterior: permiso CALL_PHONE + ACTION_CALL.
     private fun startDirectCall(rawPhone: String, emergencyId: String?) {
         val phone = normalizePhone(rawPhone)
         if (phone.isBlank()) return
@@ -324,6 +378,7 @@ class WebAppActivity : AppCompatActivity() {
             val clean = accessToken.trim()
             if (clean.isBlank()) return
             currentAccessToken = clean
+            cachedUserId = ""
             try { NativePushRegistrar.saveAccessToken(applicationContext, clean) } catch (_: Throwable) {}
             nativeHandler.post { checkEmergencyNatively() }
         }

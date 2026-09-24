@@ -4,12 +4,14 @@
   const nativeAndroid=/CERCA-Native-Android/i.test(ua)||window.__CERCA_NATIVE_ANDROID__===true||!!window.CercaNative;
   if(!ios||nativeAndroid)return;
 
-  const SHORTCUT_NAME='CERCA SOS';
-  const READY_KEY='cerca_ios_shortcut_ready_v2';
-  const SETUP_STARTED_KEY='cerca_ios_shortcut_setup_started_v2';
-  const CALLED_PREFIX='cerca_ios_shortcut_called_v2:';
+  const DEFAULT_SHORTCUT_NAME='CERCA SOS';
+  const CONFIG_URL='/ios-shortcut-config.json';
+  const READY_KEY='cerca_ios_shortcut_ready_v3';
+  const SETUP_STARTED_KEY='cerca_ios_shortcut_setup_started_v3';
+  const CALLED_PREFIX='cerca_ios_shortcut_called_v3:';
   let onboardingShown=false;
   let refreshQueued=false;
+  let shortcutConfig=null;
 
   function cleanPhone(raw){
     const s=String(raw||'').trim();
@@ -17,6 +19,21 @@
     const digits=s.replace(/\D/g,'');
     if(!digits)return '';
     return s.startsWith('+')?('+'+digits):digits;
+  }
+
+  async function loadShortcutConfig(){
+    if(shortcutConfig)return shortcutConfig;
+    try{
+      const r=await fetch(CONFIG_URL+'?v=1',{cache:'no-store'});
+      const d=await r.json();
+      shortcutConfig={
+        name:String(d?.name||DEFAULT_SHORTCUT_NAME),
+        installUrl:String(d?.install_url||'').trim()
+      };
+    }catch{
+      shortcutConfig={name:DEFAULT_SHORTCUT_NAME,installUrl:''};
+    }
+    return shortcutConfig;
   }
 
   function isReady(){try{return localStorage.getItem(READY_KEY)==='1'}catch{return false}}
@@ -44,50 +61,53 @@
     }catch{return ''}
   }
 
-  function shortcutUrl(phone){
-    return 'shortcuts://run-shortcut?name='+encodeURIComponent(SHORTCUT_NAME)+'&input=text&text='+encodeURIComponent(phone);
+  async function shortcutUrl(phone){
+    const cfg=await loadShortcutConfig();
+    return 'shortcuts://run-shortcut?name='+encodeURIComponent(cfg.name||DEFAULT_SHORTCUT_NAME)+'&input=text&text='+encodeURIComponent(phone);
   }
 
-  function launchShortcut(phone){
+  async function launchShortcut(phone){
     const p=cleanPhone(phone);if(!p)return false;
-    location.href=shortcutUrl(p);
+    location.href=await shortcutUrl(p);
     return true;
   }
 
-  function openCreateShortcut(){
+  async function openInstaller(){
+    const cfg=await loadShortcutConfig();
     setSetupStarted(true);
+    if(cfg.installUrl){
+      location.href=cfg.installUrl;
+      return;
+    }
     location.href='shortcuts://create-shortcut';
   }
 
-  function setupModal(){
+  async function setupModal(){
     if(document.querySelector('.modalWrap'))return;
+    const cfg=await loadShortcutConfig();
+    const oneTap=!!cfg.installUrl;
     const html='<h2>Activar llamadas de CERCA en iPhone</h2>'+
-      '<p>Esto se hace una sola vez. Después, cuando actives un SOS normal, CERCA intentará iniciar la llamada desde este iPhone al contacto que elegiste.</p>'+
-      '<div class="statusBox" style="text-align:left;margin:14px 0">'+
-      '<div><b>1.</b> Tocá <b>Abrir Atajos</b>.</div>'+
-      '<div style="margin-top:8px"><b>2.</b> Creá un atajo con el nombre exacto <b>CERCA SOS</b>.</div>'+
-      '<div style="margin-top:8px"><b>3.</b> Agregá la acción <b>Obtener números de teléfono de Entrada del atajo</b>.</div>'+
-      '<div style="margin-top:8px"><b>4.</b> Agregá la acción <b>Llamar</b> usando ese número.</div>'+
-      '<div style="margin-top:8px"><b>5.</b> Si aparece la opción, activá <b>Permitir ejecutar bloqueado</b>.</div>'+
-      '</div>'+
-      '<button id="iosShortcutCreate" class="btn primary block">Abrir Atajos</button>'+
+      '<p>'+(oneTap?'Configuración única. Tocá Activar y Apple te mostrará el atajo CERCA ya preparado.':'Configuración única. Estamos usando Atajos de Apple para que la llamada salga desde este iPhone.')+'</p>'+
+      (oneTap?'<div class="statusBox" style="text-align:left;margin:14px 0"><div><b>1.</b> Tocá <b>Activar ahora</b>.</div><div style="margin-top:8px"><b>2.</b> En la pantalla de Apple, tocá <b>Obtener atajo</b>.</div><div style="margin-top:8px"><b>3.</b> Volvé a CERCA y hacé la prueba.</div></div>':'<div class="statusBox" style="text-align:left;margin:14px 0"><div><b>1.</b> Tocá <b>Abrir Atajos</b>.</div><div style="margin-top:8px"><b>2.</b> Creá un atajo llamado <b>CERCA SOS</b>.</div><div style="margin-top:8px"><b>3.</b> Agregá <b>Llamar</b> usando la entrada recibida.</div></div>')+
+      '<button id="iosShortcutCreate" class="btn primary block">'+(oneTap?'Activar ahora':'Abrir Atajos')+'</button>'+
       '<button id="iosShortcutLater" class="btn light block" style="margin-top:8px">Configurar después</button>';
     const w=typeof modal==='function'?modal(html):null;
     if(!w)return;
     const create=w.querySelector('#iosShortcutCreate');
     const later=w.querySelector('#iosShortcutLater');
-    if(create)create.onclick=()=>{w.remove();openCreateShortcut();};
+    if(create)create.onclick=()=>{w.remove();openInstaller();};
     if(later)later.onclick=()=>w.remove();
   }
 
   async function verifyModal(){
     if(document.querySelector('.modalWrap'))return;
     const phone=await getCallPhone();
+    const cfg=await loadShortcutConfig();
     const html='<h2>Terminemos la configuración</h2>'+
-      '<p>Si ya creaste el atajo <b>CERCA SOS</b>, probalo ahora. Esta prueba puede iniciar una llamada real desde tu iPhone.</p>'+
+      '<p>Si ya agregaste <b>'+String(cfg.name||DEFAULT_SHORTCUT_NAME).replace(/</g,'&lt;')+'</b>, probalo ahora. Esta prueba puede iniciar una llamada real desde tu iPhone.</p>'+
       (phone?'<div class="statusBox" style="margin:14px 0"><div class="mini">Contacto de prueba: <b>'+String(phone).replace(/</g,'&lt;')+'</b></div></div>':'<div class="msg error" style="display:block;margin:14px 0">Antes de probar, elegí un contacto para llamada en Tu Red CERCA.</div>')+
       '<button id="iosShortcutVerify" class="btn primary block" '+(phone?'':'disabled')+'>Probar y activar</button>'+
-      '<button id="iosShortcutAgain" class="btn light block" style="margin-top:8px">Volver a instrucciones</button>'+
+      '<button id="iosShortcutAgain" class="btn light block" style="margin-top:8px">Volver</button>'+
       '<button id="iosShortcutLater" class="btn light block" style="margin-top:8px">Ahora no</button>';
     const w=typeof modal==='function'?modal(html):null;
     if(!w)return;
@@ -129,16 +149,16 @@
       card.className='statusBox';
       card.style.marginTop='14px';
       const ready=isReady();
-      card.innerHTML='<div class="statusLine"><span class="dot '+(ready?'live':'')+'"></span><span>'+(ready?'Llamada iPhone preparada':'Configurar llamada en iPhone')+'</span></div>'+
-        '<div class="mini">'+(ready?'SOS normal intentará ejecutar el Atajo CERCA SOS con tu contacto de llamada.':'Configuración única con Atajos de Apple. La llamada sale desde este iPhone.')+'</div>'+
+      card.innerHTML='<div class="statusLine"><span class="dot '+(ready?'live':'')+'"></span><span>'+(ready?'Llamada iPhone preparada':'Activar llamada en iPhone')+'</span></div>'+
+        '<div class="mini">'+(ready?'SOS normal intentará ejecutar CERCA SOS con tu contacto de llamada.':'Se configura una sola vez. La llamada sale desde este iPhone.')+'</div>'+
         '<div class="actions" style="margin-top:10px">'+
-        '<button id="iosShortcutSetupBtn" class="btn light">'+(ready?'Revisar':'Configurar ahora')+'</button>'+
+        '<button id="iosShortcutSetupBtn" class="btn light">'+(ready?'Revisar':'Activar')+'</button>'+
         (ready?'<button id="iosShortcutTestBtn" class="btn light">Probar llamada</button>':'')+
         '</div>';
       zone.appendChild(card);
       const setup=card.querySelector('#iosShortcutSetupBtn');
       const test=card.querySelector('#iosShortcutTestBtn');
-      if(setup)setup.onclick=()=>{setReady(false);setupModal();};
+      if(setup)setup.onclick=()=>{if(ready)setReady(false);setupModal();};
       if(test)test.onclick=testShortcut;
     });
   }

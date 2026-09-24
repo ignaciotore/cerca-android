@@ -5,6 +5,24 @@
     return plus+s.replace(/\D/g,'');
   }
 
+  function hasNativeBridge(){
+    try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
+  }
+
+  function showRuntimeMode(){
+    try{
+      const p=document.getElementById('connectionPill');
+      if(!p)return;
+      if(hasNativeBridge()){
+        p.textContent='APP ANDROID NATIVA';
+        const install=document.getElementById('installAppBtn');
+        if(install)install.style.display='none';
+      }else if(/Android/i.test(navigator.userAgent||'')){
+        p.textContent='VERSIÓN WEB';
+      }
+    }catch{}
+  }
+
   function syncNativeSession(){
     try{
       if(!window.CercaNative||typeof window.CercaNative.syncSession!=='function')return;
@@ -12,6 +30,7 @@
       window.CercaNative.syncSession(String(S.session.access_token));
       const install=document.getElementById('installAppBtn');
       if(install)install.style.display='none';
+      showRuntimeMode();
     }catch{}
   }
 
@@ -36,7 +55,7 @@
     const phone=await getCallPhone();
     if(!phone)return false;
     try{
-      if(window.CercaNative&&typeof window.CercaNative.directCall==='function'){
+      if(hasNativeBridge()){
         window.CercaNative.directCall(phone);
         return true;
       }
@@ -55,6 +74,7 @@
     const wrapped=async function(silent){
       await originalStartEmergency(silent);
       try{
+        showRuntimeMode();
         if(!silent&&typeof S!=='undefined'&&S.activeEmergency){
           syncNativeSession();
           await callNow();
@@ -86,6 +106,7 @@
   let tries=0;
   const wait=setInterval(()=>{
     tries++;
+    showRuntimeMode();
     if(typeof S!=='undefined'&&S.user){
       clearInterval(wait);
       syncNativeSession();
@@ -94,6 +115,7 @@
     }else if(tries>120){clearInterval(wait)}
   },500);
 
-  window.addEventListener('focus',()=>{syncNativeSession();refreshIncoming()});
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){syncNativeSession();refreshIncoming()}});
+  setInterval(showRuntimeMode,1500);
+  window.addEventListener('focus',()=>{showRuntimeMode();syncNativeSession();refreshIncoming()});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){showRuntimeMode();syncNativeSession();refreshIncoming()}});
 })();

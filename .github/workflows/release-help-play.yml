@@ -1,12 +1,15 @@
 name: Generar H.E.L.P release firmado
 
-# Trigger CERCA 9.2.1 · llamada SOS nativa autónoma desde backend
+# CERCA 9.2.2 · restaura ACTION_CALL nativo probado y publica APK en GitHub Releases
 on:
   workflow_dispatch:
   push:
     branches: [ "main" ]
     paths:
       - ".github/workflows/release-help-play.yml"
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -36,12 +39,21 @@ jobs:
           HELP_KEY_ALIAS: ${{ secrets.HELP_KEY_ALIAS }}
           HELP_KEY_PASSWORD: ${{ secrets.HELP_KEY_PASSWORD }}
         run: gradle --no-daemon :app:bundleRelease :app:assembleRelease
+      - name: Preparar APK CERCA 9.2.2
+        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/CERCA-9.2.2.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: HELP-RELEASE-FIRMADO
+          name: CERCA-9.2.2-FIRMADA
           path: |
             app/build/outputs/bundle/release/app-release.aab
-            app/build/outputs/apk/release/app-release.apk
-            play-store/icon-512.png
-            play-store/feature-graphic-1024x500.png
-            docs/privacy.html
+            ${{ runner.temp }}/CERCA-9.2.2.apk
+      - name: Publicar descarga directa en GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if gh release view cerca-9.2.2 >/dev/null 2>&1; then
+            gh release upload cerca-9.2.2 "$RUNNER_TEMP/CERCA-9.2.2.apk" --clobber
+          else
+            gh release create cerca-9.2.2 "$RUNNER_TEMP/CERCA-9.2.2.apk" --title "CERCA 9.2.2" --notes "Corrección de llamada automática SOS Android: restaura el mecanismo nativo ACTION_CALL usado por la versión anterior de CERCA."
+          fi

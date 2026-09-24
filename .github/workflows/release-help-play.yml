@@ -1,6 +1,6 @@
 name: Generar H.E.L.P release firmado
 
-# CERCA 9.2.3 · llamada SOS nativa independiente del deploy web
+# CERCA 9.2.4 · marcador nativo persistente + recuperacion robusta de sesion
 on:
   workflow_dispatch:
   push:
@@ -39,21 +39,21 @@ jobs:
           HELP_KEY_ALIAS: ${{ secrets.HELP_KEY_ALIAS }}
           HELP_KEY_PASSWORD: ${{ secrets.HELP_KEY_PASSWORD }}
         run: gradle --no-daemon :app:bundleRelease :app:assembleRelease
-      - name: Preparar APK CERCA 9.2.3
-        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/CERCA-9.2.3.apk"
+      - name: Preparar APK CERCA 9.2.4
+        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/CERCA-9.2.4.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: CERCA-9.2.3-FIRMADA
+          name: CERCA-9.2.4-FIRMADA
           path: |
             app/build/outputs/bundle/release/app-release.aab
-            ${{ runner.temp }}/CERCA-9.2.3.apk
+            ${{ runner.temp }}/CERCA-9.2.4.apk
       - name: Publicar descarga directa en GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          if gh release view cerca-9.2.3 >/dev/null 2>&1; then
-            gh release upload cerca-9.2.3 "$RUNNER_TEMP/CERCA-9.2.3.apk" --clobber
+          if gh release view cerca-9.2.4 >/dev/null 2>&1; then
+            gh release upload cerca-9.2.4 "$RUNNER_TEMP/CERCA-9.2.4.apk" --clobber
           else
-            gh release create cerca-9.2.3 "$RUNNER_TEMP/CERCA-9.2.3.apk" --title "CERCA 9.2.3" --notes "Llamada SOS Android desacoplada del deploy web: la app nativa recupera la sesión directamente del WebView y ejecuta ACTION_CALL."
+            gh release create cerca-9.2.4 "$RUNNER_TEMP/CERCA-9.2.4.apk" --title "CERCA 9.2.4" --notes "Corrige el indicador que la web pisaba y hace robusta la recuperación de la sesión para la llamada SOS nativa."
           fi

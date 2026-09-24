@@ -1,6 +1,6 @@
 name: Generar H.E.L.P release firmado
 
-# CERCA 9.2.5 · una sola llamada por SOS
+# CERCA 9.2.6 · llamada directa inmediata + una sola llamada por SOS
 on:
   workflow_dispatch:
   push:
@@ -25,18 +25,48 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Bloquear redial duplicado desde el puente web
+      - name: Aplicar llamada directa inmediata sin redial
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+
           p=Path('app/src/main/java/com/help/seguridad/WebAppActivity.kt')
           s=p.read_text()
-          old='''        @JavascriptInterface\n        fun directCall(phone: String) {\n            runOnUiThread { startDirectCall(phone, null) }\n        }'''
-          new='''        @JavascriptInterface\n        fun directCall(phone: String) {\n            // La web no llama a ciegas. Android resuelve el SOS activo, obtiene su ID\n            // y usa el guardado LAST_CALLED_EMERGENCY para permitir una sola llamada.\n            nativeHandler.post { checkEmergencyNatively() }\n        }'''
-          if old not in s:
-              raise SystemExit('No se encontró el puente directCall esperado')
-          p.write_text(s.replace(old,new,1))
+
+          old_const='''        private const val LAST_CALLED_EMERGENCY = "last_called_emergency"\n        private const val SESSION_STORAGE_KEY = "cerca_web_session_v1"'''
+          new_const='''        private const val LAST_CALLED_EMERGENCY = "last_called_emergency"\n        private const val WEB_CALL_LATCH = "web_call_latch"\n        private const val WEB_CALL_LATCH_AT = "web_call_latch_at"\n        private const val WEB_CALL_LATCH_GRACE_MS = 15000L\n        private const val SESSION_STORAGE_KEY = "cerca_web_session_v1"'''
+          if old_const in s:
+              s=s.replace(old_const,new_const,1)
+          elif 'WEB_CALL_LATCH' not in s:
+              raise SystemExit('No se pudo insertar el latch nativo')
+
+          old_last='''    private fun lastCalledEmergency(): String =\n        getSharedPreferences(PREFS, MODE_PRIVATE)\n            .getString(LAST_CALLED_EMERGENCY, "")\n            .orEmpty()\n\n    private fun checkEmergencyNatively() {'''
+          new_last='''    private fun lastCalledEmergency(): String =\n        getSharedPreferences(PREFS, MODE_PRIVATE)\n            .getString(LAST_CALLED_EMERGENCY, "")\n            .orEmpty()\n\n    private fun webCallLatched(): Boolean =\n        getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(WEB_CALL_LATCH, false)\n\n    private fun webCallLatchAt(): Long =\n        getSharedPreferences(PREFS, MODE_PRIVATE).getLong(WEB_CALL_LATCH_AT, 0L)\n\n    private fun setWebCallLatched(active: Boolean) {\n        val edit = getSharedPreferences(PREFS, MODE_PRIVATE).edit()\n        if (active) {\n            edit.putBoolean(WEB_CALL_LATCH, true)\n                .putLong(WEB_CALL_LATCH_AT, System.currentTimeMillis())\n        } else {\n            edit.remove(WEB_CALL_LATCH).remove(WEB_CALL_LATCH_AT)\n        }\n        edit.apply()\n    }\n\n    private fun checkEmergencyNatively() {'''
+          if old_last in s:
+              s=s.replace(old_last,new_last,1)
+          elif 'private fun webCallLatched()' not in s:
+              raise SystemExit('No se pudo insertar helpers del latch')
+
+          old_em='''                val emergencies = JSONArray(emergencyJson)\n                if (emergencies.length() == 0) return@execute\n                val emergencyId = emergencies.getJSONObject(0).optString("id", "")\n                if (emergencyId.isBlank() || emergencyId == lastCalledEmergency()) return@execute\n\n                val contactsJson = httpGet('''
+          new_em='''                val emergencies = JSONArray(emergencyJson)\n                if (emergencies.length() == 0) {\n                    val latchedAt = webCallLatchAt()\n                    if (webCallLatched() && latchedAt > 0L && System.currentTimeMillis() - latchedAt > WEB_CALL_LATCH_GRACE_MS) {\n                        setWebCallLatched(false)\n                    }\n                    return@execute\n                }\n                val emergencyId = emergencies.getJSONObject(0).optString("id", "")\n                if (emergencyId.isBlank()) return@execute\n                if (emergencyId == lastCalledEmergency()) {\n                    if (!webCallLatched()) setWebCallLatched(true)\n                    return@execute\n                }\n                if (webCallLatched()) {\n                    // La llamada ya salió directamente desde el puente web.\n                    // Asociamos ese disparo al ID real del SOS para impedir cualquier redial.\n                    markEmergencyCalled(emergencyId)\n                    return@execute\n                }\n\n                val contactsJson = httpGet('''
+          if old_em in s:
+              s=s.replace(old_em,new_em,1)
+          elif 'La llamada ya salió directamente desde el puente web.' not in s:
+              raise SystemExit('No se pudo corregir la deduplicación del SOS')
+
+          old_bridge='''        @JavascriptInterface\n        fun directCall(phone: String) {\n            // La web no llama a ciegas. Android resuelve el SOS activo, obtiene su ID\n            // y usa el guardado LAST_CALLED_EMERGENCY para permitir una sola llamada.\n            nativeHandler.post { checkEmergencyNatively() }\n        }'''
+          new_bridge='''        @JavascriptInterface\n        fun directCall(phone: String) {\n            val clean = normalizePhone(phone)\n            if (clean.isBlank() || webCallLatched()) return\n\n            // Primero cerramos el candado y después abrimos la app Teléfono.\n            // Así la llamada sale en el acto y cualquier repetición de la web queda ignorada.\n            setWebCallLatched(true)\n            runOnUiThread { startDirectCall(clean, null) }\n\n            // En paralelo asociamos esta llamada con el ID real de la emergencia.\n            nativeHandler.postDelayed({ checkEmergencyNatively() }, 300L)\n        }'''
+          if old_bridge not in s:
+              raise SystemExit('No se encontró el puente 9.2.5 esperado')
+          s=s.replace(old_bridge,new_bridge,1)
+          p.write_text(s)
+
+          g=Path('app/build.gradle.kts')
+          b=g.read_text()
+          b=b.replace('versionCode = 58','versionCode = 59',1)
+          b=b.replace('versionName = "9.2.5"','versionName = "9.2.6"',1)
+          g.write_text(b)
           PY
 
       - name: Preparar upload key
@@ -56,35 +86,35 @@ jobs:
           HELP_KEY_PASSWORD: ${{ secrets.HELP_KEY_PASSWORD }}
         run: gradle --no-daemon :app:bundleRelease :app:assembleRelease
 
-      - name: Persistir corrección nativa en main
+      - name: Persistir CERCA 9.2.6 en main
         shell: bash
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/help/seguridad/WebAppActivity.kt
+          git add app/src/main/java/com/help/seguridad/WebAppActivity.kt app/build.gradle.kts
           if ! git diff --cached --quiet; then
-            git commit -m "Prevent duplicate SOS redial from web bridge"
+            git commit -m "CERCA 9.2.6 immediate single SOS call"
             git push
           fi
 
-      - name: Preparar APK CERCA 9.2.5
-        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/CERCA-9.2.5.apk"
+      - name: Preparar APK CERCA 9.2.6
+        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/CERCA-9.2.6.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CERCA-9.2.5-FIRMADA
+          name: CERCA-9.2.6-FIRMADA
           path: |
             app/build/outputs/bundle/release/app-release.aab
-            ${{ runner.temp }}/CERCA-9.2.5.apk
+            ${{ runner.temp }}/CERCA-9.2.6.apk
 
       - name: Publicar descarga directa en GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          if gh release view cerca-9.2.5 >/dev/null 2>&1; then
-            gh release upload cerca-9.2.5 "$RUNNER_TEMP/CERCA-9.2.5.apk" --clobber
+          if gh release view cerca-9.2.6 >/dev/null 2>&1; then
+            gh release upload cerca-9.2.6 "$RUNNER_TEMP/CERCA-9.2.6.apk" --clobber
           else
-            gh release create cerca-9.2.5 "$RUNNER_TEMP/CERCA-9.2.5.apk" --title "CERCA 9.2.5" --notes "Corrige el redial infinito: cada SOS normal puede iniciar una sola llamada automática. Android deduplica por ID de emergencia y la web ya no dispara llamadas duplicadas desde el puente."
+            gh release create cerca-9.2.6 "$RUNNER_TEMP/CERCA-9.2.6.apk" --title "CERCA 9.2.6" --notes "Restaura la llamada SOS directa e inmediata. El puente Android llama sin esperar al backend y un latch nativo evita que el mismo SOS vuelva a llamar al cortar."
           fi

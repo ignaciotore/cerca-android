@@ -62,16 +62,20 @@
   }
 
   function dispatchNativeCall(phone){
+    // Dentro de la app Android instalada SIEMPRE usamos primero el bridge nativo.
+    // Antes se priorizaba el deep link por detectar Android y el WebView nunca
+    // llegaba a CercaNative.directCall(), por eso el SOS quedaba activo sin llamar.
     try{
-      // En cualquier Android usamos el esquema interno de CERCA. Si estamos
-      // dentro del WebView, WebAppActivity lo intercepta. Si estamos en PWA/
-      // navegador, Android abre la app nativa instalada y le entrega el número.
-      if(isAndroid()){
-        window.location.href='cerca://call?phone='+encodeURIComponent(phone);
-        return true;
-      }
       if(hasBridge()){
         window.CercaNative.directCall(phone);
+        return true;
+      }
+    }catch{}
+
+    // Fallback sólo para navegador/PWA Android: abre la app nativa instalada.
+    try{
+      if(isAndroid()){
+        window.location.href='cerca://call?phone='+encodeURIComponent(phone);
         return true;
       }
     }catch{}

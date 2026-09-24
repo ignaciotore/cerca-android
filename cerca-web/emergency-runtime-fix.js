@@ -1,4 +1,10 @@
 (()=>{
+  function cleanPhone(raw){
+    const s=String(raw||'').trim();
+    const plus=s.startsWith('+')?'+':'';
+    return plus+s.replace(/\D/g,'');
+  }
+
   function syncNativeSession(){
     try{
       if(!window.CercaNative||typeof window.CercaNative.syncSession!=='function')return;
@@ -9,8 +15,55 @@
     }catch{}
   }
 
-  // La llamada automática se maneja exclusivamente en android-auto-call-watchdog.js.
-  // No usamos tel: ni deep links desde la web/PWA para evitar bucles y duplicados.
+  async function getCallPhone(){
+    try{
+      if(typeof designatedCall==='function'){
+        const c=designatedCall();
+        const p=cleanPhone(c?.phone_e164||c?.phone||c?.target_phone||c?.contact_phone||'');
+        if(p)return p;
+      }
+    }catch{}
+    try{
+      if(typeof S==='undefined'||!S.user?.id||typeof request!=='function')return '';
+      const uid=encodeURIComponent(S.user.id);
+      const rows=await request('/rest/v1/cerca_contacts_v2?owner_user_id=eq.'+uid+'&call_enabled=eq.true&select=phone_e164&limit=1');
+      const row=Array.isArray(rows)?rows[0]:null;
+      return cleanPhone(row?.phone_e164||'');
+    }catch{return ''}
+  }
+
+  async function callNow(){
+    const phone=await getCallPhone();
+    if(!phone)return false;
+    try{
+      if(window.CercaNative&&typeof window.CercaNative.directCall==='function'){
+        window.CercaNative.directCall(phone);
+        return true;
+      }
+    }catch{}
+    try{
+      if(/Android/i.test(navigator.userAgent||'')){
+        location.href='cerca://call?phone='+encodeURIComponent(phone);
+        return true;
+      }
+    }catch{}
+    return false;
+  }
+
+  if(typeof startEmergency==='function'&&!startEmergency.__cercaImmediateCall){
+    const originalStartEmergency=startEmergency;
+    const wrapped=async function(silent){
+      await originalStartEmergency(silent);
+      try{
+        if(!silent&&typeof S!=='undefined'&&S.activeEmergency){
+          syncNativeSession();
+          await callNow();
+        }
+      }catch{}
+    };
+    wrapped.__cercaImmediateCall=true;
+    startEmergency=wrapped;
+  }
 
   async function refreshIncoming(){
     try{

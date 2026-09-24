@@ -1,9 +1,12 @@
 (()=>{
+  const STORAGE_KEY='cerca_auto_call_emergency_v2';
   let confirmedKey='';
   let busy=false;
   let lastAttemptAt=0;
   let cachedPhone='';
   let cachedAt=0;
+
+  try{confirmedKey=localStorage.getItem(STORAGE_KEY)||''}catch{}
 
   function cleanPhone(raw){
     const s=String(raw||'').trim();
@@ -13,7 +16,7 @@
 
   function emergencyKey(e){
     if(!e)return '';
-    return String(e.id||e.emergency_id||e.started_at||e.created_at||'active');
+    return String(e.id||e.emergency_id||e.started_at||e.created_at||'');
   }
 
   function isNormalActive(e){
@@ -29,6 +32,17 @@
 
   function isNativeContainer(){
     try{return /CERCA-Native-Android\/[^\s]+/i.test(navigator.userAgent||'')||window.__CERCA_NATIVE_ANDROID__===true||!!window.CercaNative}catch{return false}
+  }
+
+  function rememberCalled(key){
+    confirmedKey=key;
+    try{localStorage.setItem(STORAGE_KEY,key)}catch{}
+  }
+
+  function forgetCalled(key){
+    if(confirmedKey!==key)return;
+    confirmedKey='';
+    try{localStorage.removeItem(STORAGE_KEY)}catch{}
   }
 
   function localPhone(){
@@ -58,7 +72,8 @@
   function dispatchNativeCall(phone){
     try{
       if(isNativeContainer()&&window.CercaNative){
-        window.CercaNative.directCall(String(phone));
+        // In the native container Android has its own once-per-emergency watchdog.
+        // Do not also fire from JS or the same SOS can redial after returning from the Phone app.
         return true;
       }
     }catch{}
@@ -80,18 +95,24 @@
     lastAttemptAt=Date.now();
     busy=true;
 
-    const phone=await phoneForCall();
-    if(!phone){busy=false;return}
-
-    if(!dispatchNativeCall(phone)){
+    // Native Android handles the call itself and persists the emergency id.
+    if(isNativeContainer()){
+      rememberCalled(key);
       busy=false;
       return;
     }
 
-    setTimeout(()=>{
-      if(document.visibilityState==='hidden')confirmedKey=key;
+    const phone=await phoneForCall();
+    if(!phone){busy=false;return}
+
+    // Persist BEFORE leaving the page. Timers are suspended while Android's Phone app is foregrounded.
+    rememberCalled(key);
+    if(!dispatchNativeCall(phone)){
+      forgetCalled(key);
       busy=false;
-    },1800);
+      return;
+    }
+    busy=false;
   }
 
   async function tick(){

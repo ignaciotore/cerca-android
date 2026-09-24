@@ -24,11 +24,12 @@ class CercaApplication : Application(), Application.ActivityLifecycleCallbacks {
         ) {
             EnterpriseUiController.attach(activity)
         }
-        promptNotificationsIfNeeded(activity)
+        // La nueva interfaz WebAppActivity no pide permisos al arrancar.
+        // Los permisos se solicitan únicamente cuando una función los necesita.
+        if (activity is MainActivity) promptNotificationsIfNeeded(activity)
     }
 
     private fun promptNotificationsIfNeeded(activity: Activity) {
-        if (activity !is MainActivity && activity !is WebAppActivity) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
         if (activity.intent.getBooleanExtra("cerca_notification_prompted", false)) return

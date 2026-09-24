@@ -1,0 +1,57 @@
+name: Firmar CERCA SOS para iPhone
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ios-shortcuts/CERCA-SOS.shortcut.plist'
+      - '.github/workflows/sign-ios-shortcut.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sign-shortcut:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verificar Shortcuts CLI
+        run: |
+          sw_vers
+          which shortcuts
+          shortcuts help || true
+
+      - name: Preparar archivo del atajo
+        run: |
+          mkdir -p build
+          plutil -convert binary1 ios-shortcuts/CERCA-SOS.shortcut.plist -o build/CERCA-SOS.unsigned.shortcut
+          plutil -lint build/CERCA-SOS.unsigned.shortcut
+
+      - name: Firmar para cualquier usuario
+        run: |
+          shortcuts sign --mode anyone --input build/CERCA-SOS.unsigned.shortcut --output build/CERCA-SOS.shortcut
+          test -s build/CERCA-SOS.shortcut
+
+      - name: Publicar atajo firmado en CERCA
+        run: |
+          cp build/CERCA-SOS.shortcut cerca-web/CERCA-SOS.shortcut
+          git config user.name 'CERCA Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add cerca-web/CERCA-SOS.shortcut
+          if git diff --cached --quiet; then
+            echo 'Sin cambios'
+          else
+            git commit -m 'CERCA: publicar Atajo iPhone firmado'
+            git push
+          fi
+
+      - name: Subir respaldo
+        uses: actions/upload-artifact@v4
+        with:
+          name: CERCA-SOS-iPhone
+          path: build/CERCA-SOS.shortcut
+          if-no-files-found: error

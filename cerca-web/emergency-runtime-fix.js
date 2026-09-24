@@ -5,15 +5,29 @@
     return plus+s.replace(/\D/g,'');
   }
 
-  function hasNativeBridge(){
-    try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
+  function nativeUa(){
+    try{return /CERCA-Native-Android\/[^\s]+/i.test(navigator.userAgent||'')}catch{return false}
+  }
+
+  function isNativeContainer(){
+    try{return nativeUa()||window.__CERCA_NATIVE_ANDROID__===true||!!window.CercaNative}catch{return nativeUa()}
+  }
+
+  function tryNativeCall(phone){
+    try{
+      if(window.CercaNative){
+        window.CercaNative.directCall(String(phone));
+        return true;
+      }
+    }catch{}
+    return false;
   }
 
   function showRuntimeMode(){
     try{
       const p=document.getElementById('connectionPill');
       if(!p)return;
-      if(hasNativeBridge()){
+      if(isNativeContainer()){
         p.textContent='APP ANDROID NATIVA';
         const install=document.getElementById('installAppBtn');
         if(install)install.style.display='none';
@@ -25,7 +39,7 @@
 
   function syncNativeSession(){
     try{
-      if(!window.CercaNative||typeof window.CercaNative.syncSession!=='function')return;
+      if(!isNativeContainer()||!window.CercaNative)return;
       if(typeof S==='undefined'||!S.session?.access_token)return;
       window.CercaNative.syncSession(String(S.session.access_token));
       const install=document.getElementById('installAppBtn');
@@ -54,12 +68,9 @@
   async function callNow(){
     const phone=await getCallPhone();
     if(!phone)return false;
-    try{
-      if(hasNativeBridge()){
-        window.CercaNative.directCall(phone);
-        return true;
-      }
-    }catch{}
+
+    if(isNativeContainer()&&tryNativeCall(phone))return true;
+
     try{
       if(/Android/i.test(navigator.userAgent||'')){
         location.href='cerca://call?phone='+encodeURIComponent(phone);
@@ -115,7 +126,7 @@
     }else if(tries>120){clearInterval(wait)}
   },500);
 
-  setInterval(showRuntimeMode,1500);
+  setInterval(showRuntimeMode,1000);
   window.addEventListener('focus',()=>{showRuntimeMode();syncNativeSession();refreshIncoming()});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){showRuntimeMode();syncNativeSession();refreshIncoming()}});
 })();

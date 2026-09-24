@@ -1,20 +1,14 @@
 (()=>{
   let confirmedKey='';
-  let pendingKey='';
   let busy=false;
   let lastAttemptAt=0;
-  let warnedKey='';
+  let cachedPhone='';
+  let cachedAt=0;
 
-  function phoneForCall(){
-    try{
-      const c=(typeof designatedCall==='function'?designatedCall():null) ||
-        ((typeof networkCollections==='function'?(networkCollections().syncedContacts||[]):[]).find(x=>x&&x.call_enabled===true));
-      if(!c)return '';
-      const raw=(typeof first==='function'?first(c,'phone_e164','phone','target_phone','contact_phone'):null)||c.phone_e164||c.phone||'';
-      const s=String(raw||'').trim();
-      const plus=s.startsWith('+')?'+':'';
-      return plus+s.replace(/\D/g,'');
-    }catch{return ''}
+  function cleanPhone(raw){
+    const s=String(raw||'').trim();
+    const plus=s.startsWith('+')?'+':'';
+    return plus+s.replace(/\D/g,'');
   }
 
   function emergencyKey(e){
@@ -33,37 +27,49 @@
     try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
   }
 
+  function localPhone(){
+    try{
+      const c=(typeof designatedCall==='function'?designatedCall():null) ||
+        ((typeof networkCollections==='function'?(networkCollections().syncedContacts||[]):[]).find(x=>x&&x.call_enabled===true));
+      if(!c)return '';
+      return cleanPhone((typeof first==='function'?first(c,'phone_e164','phone','target_phone','contact_phone'):null)||c.phone_e164||c.phone||'');
+    }catch{return ''}
+  }
+
+  async function backendPhone(){
+    if(cachedPhone&&Date.now()-cachedAt<30000)return cachedPhone;
+    try{
+      if(typeof S==='undefined'||!S.user?.id||typeof request!=='function')return '';
+      const uid=encodeURIComponent(S.user.id);
+      const rows=await request('/rest/v1/cerca_contacts_v2?owner_user_id=eq.'+uid+'&call_enabled=eq.true&select=phone_e164&limit=1');
+      const row=Array.isArray(rows)?rows[0]:null;
+      const p=cleanPhone(row?.phone_e164||'');
+      if(p){cachedPhone=p;cachedAt=Date.now()}
+      return p;
+    }catch{return ''}
+  }
+
+  async function phoneForCall(){
+    return localPhone()||await backendPhone();
+  }
+
   function markConfirmed(key){
     if(!key)return;
     confirmedKey=key;
-    pendingKey='';
     busy=false;
     try{sessionStorage.setItem('cerca_last_auto_call',key)}catch{}
   }
 
-  function warnWebOnce(key){
-    if(warnedKey===key)return;
-    warnedKey=key;
-    try{
-      if(typeof toast==='function'){
-        toast('La alerta CERCA fue enviada. La llamada automática requiere la app Android instalada.','info');
-      }
-    }catch{}
-  }
-
-  function trigger(phone,key){
-    pendingKey=key;
+  async function trigger(e){
+    if(!isNative())return;
+    const key=emergencyKey(e);
+    if(!key||key===confirmedKey)return;
+    if(Date.now()-lastAttemptAt<5000)return;
     lastAttemptAt=Date.now();
     busy=true;
 
-    // IMPORTANTE: desde navegador/PWA no forzamos abrir la app nativa.
-    // Evita el bucle que expulsaba al usuario de CERCA cuando había un SOS activo.
-    if(!isNative()){
-      busy=false;
-      pendingKey='';
-      warnWebOnce(key);
-      return;
-    }
+    const phone=await phoneForCall();
+    if(!phone){busy=false;return}
 
     try{
       window.CercaNative.directCall(phone);
@@ -72,32 +78,26 @@
       return;
     }
 
+    // Si Android abre la pantalla de llamada, la app pasa a segundo plano.
+    // Reintentamos si eso no ocurre; así un intento perdido no mata la llamada.
     setTimeout(()=>{
       if(document.visibilityState==='hidden')markConfirmed(key);
       else busy=false;
-    },1800);
+    },2500);
   }
 
-  function tick(){
-    if(busy)return;
+  async function tick(){
+    if(busy||!isNative())return;
     try{
-      if(typeof S==='undefined')return;
-      const e=S.activeEmergency;
-      if(!isNormalActive(e))return;
-      const key=emergencyKey(e);
-      if(!key||key===confirmedKey)return;
-      if(Date.now()-lastAttemptAt<5000)return;
-      const phone=phoneForCall();
-      if(!phone)return;
-      trigger(phone,key);
+      if(typeof S==='undefined'||!isNormalActive(S.activeEmergency))return;
+      await trigger(S.activeEmergency);
     }catch{busy=false}
   }
 
   try{confirmedKey=sessionStorage.getItem('cerca_last_auto_call')||''}catch{}
-  setInterval(tick,700);
-  window.addEventListener('focus',()=>setTimeout(tick,250));
+  setInterval(tick,800);
+  window.addEventListener('focus',()=>setTimeout(tick,300));
   document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState==='hidden'&&pendingKey)markConfirmed(pendingKey);
     if(document.visibilityState==='visible')setTimeout(tick,350);
   });
 })();

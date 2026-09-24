@@ -4,6 +4,7 @@
   let busy=false;
   let lastAttemptAt=0;
   let warnedKey='';
+  const ANDROID_APP_URL='https://yduoxeqgxolkzvjexlqk.supabase.co/functions/v1/cerca-android-app';
 
   function phoneForCall(){
     try{
@@ -41,14 +42,27 @@
     try{sessionStorage.setItem('cerca_last_auto_call',key)}catch{}
   }
 
+  function openNativeHelp(){
+    try{
+      if(isNative()){
+        if(typeof window.CercaNative.requestCallPermission==='function')window.CercaNative.requestCallPermission();
+        return;
+      }
+      location.href=ANDROID_APP_URL;
+    }catch{}
+  }
+
   function warnBlocked(key){
     if(warnedKey===key)return;
     warnedKey=key;
     try{
-      if(typeof toast==='function'){
-        toast(isNative()
-          ?'Android está bloqueando la llamada automática. Habilitá Teléfono para CERCA en Ajustes > Apps > CERCA > Permisos. No hace falta reinstalar.'
-          :'Abriste CERCA desde el acceso web. Para la llamada automática usá la app CERCA instalada.','error');
+      if(typeof modal==='function'){
+        const native=isNative();
+        const w=modal('<h2>'+(native?'Habilitar llamada automática':'Abrir CERCA como app')+'</h2><p>'+(native?'Android necesita autorizar el permiso de Teléfono para completar la llamada automática.':'Estás usando el acceso web de Chrome. La llamada automática funciona desde la app Android real de CERCA.')+'</p><button id="cercaNativeFix" class="btn primary block">'+(native?'PERMITIR LLAMADAS':'ABRIR / INSTALAR APP CERCA')+'</button><button id="cercaNativeClose" class="btn light block" style="margin-top:8px">Cerrar</button>');
+        const fix=document.getElementById('cercaNativeFix');if(fix)fix.onclick=()=>{w.remove();openNativeHelp()};
+        const close=document.getElementById('cercaNativeClose');if(close)close.onclick=()=>w.remove();
+      }else if(typeof toast==='function'){
+        toast(isNative()?'CERCA necesita el permiso de Teléfono.':'Abrí CERCA desde la app Android para habilitar la llamada automática.','error');
       }
     }catch{}
   }
@@ -68,12 +82,8 @@
       }
     }catch{}
     setTimeout(()=>{
-      if(document.visibilityState==='hidden'){
-        markConfirmed(key);
-      }else{
-        busy=false;
-        if(sent)warnBlocked(key);
-      }
+      if(document.visibilityState==='hidden')markConfirmed(key);
+      else{busy=false;if(sent)warnBlocked(key)}
     },1800);
   }
 

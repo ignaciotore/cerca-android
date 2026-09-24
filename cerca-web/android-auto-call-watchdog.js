@@ -57,7 +57,6 @@
     if(!key)return;
     confirmedKey=key;
     busy=false;
-    try{sessionStorage.setItem('cerca_last_auto_call',key)}catch{}
   }
 
   async function trigger(e){
@@ -78,8 +77,6 @@
       return;
     }
 
-    // Si Android abre la pantalla de llamada, la app pasa a segundo plano.
-    // Reintentamos si eso no ocurre; así un intento perdido no mata la llamada.
     setTimeout(()=>{
       if(document.visibilityState==='hidden')markConfirmed(key);
       else busy=false;
@@ -94,7 +91,6 @@
     }catch{busy=false}
   }
 
-  try{confirmedKey=sessionStorage.getItem('cerca_last_auto_call')||''}catch{}
   setInterval(tick,800);
   window.addEventListener('focus',()=>setTimeout(tick,300));
   document.addEventListener('visibilitychange',()=>{

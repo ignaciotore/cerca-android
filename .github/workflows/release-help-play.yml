@@ -1,6 +1,6 @@
 name: Generar H.E.L.P release firmado
 
-# CERCA 9.2.4 · marcador nativo persistente + recuperacion robusta de sesion
+# CERCA 9.2.5 · una sola llamada por SOS
 on:
   workflow_dispatch:
   push:
@@ -24,6 +24,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
+
+      - name: Bloquear redial duplicado desde el puente web
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/help/seguridad/WebAppActivity.kt')
+          s=p.read_text()
+          old='''        @JavascriptInterface\n        fun directCall(phone: String) {\n            runOnUiThread { startDirectCall(phone, null) }\n        }'''
+          new='''        @JavascriptInterface\n        fun directCall(phone: String) {\n            // La web no llama a ciegas. Android resuelve el SOS activo, obtiene su ID\n            // y usa el guardado LAST_CALLED_EMERGENCY para permitir una sola llamada.\n            nativeHandler.post { checkEmergencyNatively() }\n        }'''
+          if old not in s:
+              raise SystemExit('No se encontró el puente directCall esperado')
+          p.write_text(s.replace(old,new,1))
+          PY
+
       - name: Preparar upload key
         shell: bash
         env:
@@ -32,6 +47,7 @@ jobs:
           set -e
           test -n "$HELP_UPLOAD_KEYSTORE_B64"
           printf '%s' "$HELP_UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/help-upload.jks"
+
       - name: Compilar release firmado
         env:
           HELP_KEYSTORE_PATH: ${{ runner.temp }}/help-upload.jks
@@ -39,21 +55,36 @@ jobs:
           HELP_KEY_ALIAS: ${{ secrets.HELP_KEY_ALIAS }}
           HELP_KEY_PASSWORD: ${{ secrets.HELP_KEY_PASSWORD }}
         run: gradle --no-daemon :app:bundleRelease :app:assembleRelease
-      - name: Preparar APK CERCA 9.2.4
-        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/CERCA-9.2.4.apk"
+
+      - name: Persistir corrección nativa en main
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/help/seguridad/WebAppActivity.kt
+          if ! git diff --cached --quiet; then
+            git commit -m "Prevent duplicate SOS redial from web bridge"
+            git push
+          fi
+
+      - name: Preparar APK CERCA 9.2.5
+        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/CERCA-9.2.5.apk"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: CERCA-9.2.4-FIRMADA
+          name: CERCA-9.2.5-FIRMADA
           path: |
             app/build/outputs/bundle/release/app-release.aab
-            ${{ runner.temp }}/CERCA-9.2.4.apk
+            ${{ runner.temp }}/CERCA-9.2.5.apk
+
       - name: Publicar descarga directa en GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          if gh release view cerca-9.2.4 >/dev/null 2>&1; then
-            gh release upload cerca-9.2.4 "$RUNNER_TEMP/CERCA-9.2.4.apk" --clobber
+          if gh release view cerca-9.2.5 >/dev/null 2>&1; then
+            gh release upload cerca-9.2.5 "$RUNNER_TEMP/CERCA-9.2.5.apk" --clobber
           else
-            gh release create cerca-9.2.4 "$RUNNER_TEMP/CERCA-9.2.4.apk" --title "CERCA 9.2.4" --notes "Corrige el indicador que la web pisaba y hace robusta la recuperación de la sesión para la llamada SOS nativa."
+            gh release create cerca-9.2.5 "$RUNNER_TEMP/CERCA-9.2.5.apk" --title "CERCA 9.2.5" --notes "Corrige el redial infinito: cada SOS normal puede iniciar una sola llamada automática. Android deduplica por ID de emergencia y la web ya no dispara llamadas duplicadas desde el puente."
           fi

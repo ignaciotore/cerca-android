@@ -31,7 +31,7 @@ class WebAppActivity : AppCompatActivity() {
         private const val WEB_URL = "https://cerca-seguridad.pages.dev/"
         private const val REQ_CALL = 4101
         private const val REQ_LOCATION = 4102
-        private const val WATCH_INTERVAL_MS = 1400L
+        private const val WATCH_INTERVAL_MS = 1000L
         private const val PREFS = "cerca_native_bridge"
         private const val LAST_CALLED_EMERGENCY = "last_called_emergency"
     }
@@ -42,8 +42,8 @@ class WebAppActivity : AppCompatActivity() {
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
 
-    @Volatile private var currentAccessToken: String = ""
-    @Volatile private var cachedUserId: String = ""
+    @Volatile private var currentAccessToken = ""
+    @Volatile private var cachedUserId = ""
     @Volatile private var resumed = false
     private val nativeExecutor = Executors.newSingleThreadExecutor()
     private val nativeWatchBusy = AtomicBoolean(false)
@@ -66,7 +66,7 @@ class WebAppActivity : AppCompatActivity() {
             settings.databaseEnabled = true
             settings.setGeolocationEnabled(true)
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/5"
+            settings.userAgentString = settings.userAgentString + " CERCA-Native-Android/6"
             addJavascriptInterface(CercaNativeBridge(), "CercaNative")
             webChromeClient = object : WebChromeClient() {
                 override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
@@ -112,7 +112,7 @@ class WebAppActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         resumed = true
-        NativePushRegistrar.registerLatest(applicationContext)
+        try { NativePushRegistrar.registerLatest(applicationContext) } catch (_: Throwable) {}
         nativeHandler.removeCallbacks(nativeWatchdog)
         nativeHandler.post(nativeWatchdog)
     }
@@ -141,28 +141,26 @@ class WebAppActivity : AppCompatActivity() {
         loadIntentTarget(intent)
     }
 
-    private fun handleNavigation(uri: Uri): Boolean {
-        return when (uri.scheme?.lowercase()) {
-            "tel" -> {
-                startDirectCall(uri.schemeSpecificPart.orEmpty(), null)
+    private fun handleNavigation(uri: Uri): Boolean = when (uri.scheme?.lowercase()) {
+        "tel" -> {
+            startDirectCall(uri.schemeSpecificPart.orEmpty(), null)
+            true
+        }
+        "cerca" -> {
+            if (uri.host.equals("call", true)) {
+                startDirectCall(uri.getQueryParameter("phone").orEmpty(), null)
+                true
+            } else false
+        }
+        "http", "https" -> {
+            if (uri.host.equals("cerca-seguridad.pages.dev", ignoreCase = true)) false
+            else {
+                try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) {}
                 true
             }
-            "cerca" -> {
-                if (uri.host.equals("call", true)) {
-                    startDirectCall(uri.getQueryParameter("phone").orEmpty(), null)
-                    true
-                } else false
-            }
-            "http", "https" -> {
-                if (uri.host.equals("cerca-seguridad.pages.dev", ignoreCase = true)) false
-                else {
-                    try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) {}
-                    true
-                }
-            }
-            else -> {
-                try { startActivity(Intent(Intent.ACTION_VIEW, uri)); true } catch (_: Exception) { false }
-            }
+        }
+        else -> {
+            try { startActivity(Intent(Intent.ACTION_VIEW, uri)); true } catch (_: Exception) { false }
         }
     }
 
@@ -184,6 +182,7 @@ class WebAppActivity : AppCompatActivity() {
         return if (trimmed.startsWith("+")) "+$digits" else digits
     }
 
+    // Mismo mecanismo que usaba la CERCA nativa anterior: permiso CALL_PHONE + ACTION_CALL.
     private fun startDirectCall(rawPhone: String, emergencyId: String?) {
         val phone = normalizePhone(rawPhone)
         if (phone.isBlank()) return
@@ -196,7 +195,10 @@ class WebAppActivity : AppCompatActivity() {
         }
 
         try {
-            startActivity(Intent(Intent.ACTION_CALL, Uri.fromParts("tel", phone, null)))
+            val callIntent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:$phone")
+            }
+            startActivity(callIntent)
             if (!emergencyId.isNullOrBlank()) markEmergencyCalled(emergencyId)
         } catch (_: Exception) {
             Toast.makeText(this, "No pude iniciar la llamada automática.", Toast.LENGTH_LONG).show()
@@ -250,12 +252,10 @@ class WebAppActivity : AppCompatActivity() {
                 if (phone.isBlank()) return@execute
 
                 runOnUiThread {
-                    if (!isFinishing && !isDestroyed && resumed) {
-                        startDirectCall(phone, emergencyId)
-                    }
+                    if (!isFinishing && !isDestroyed && resumed) startDirectCall(phone, emergencyId)
                 }
             } catch (_: Throwable) {
-                // Reintenta solo mientras CERCA está abierta. No afectamos el SOS ni las notificaciones.
+                // Se vuelve a intentar mientras la emergencia normal siga activa.
             } finally {
                 nativeWatchBusy.set(false)
             }
@@ -287,18 +287,14 @@ class WebAppActivity : AppCompatActivity() {
         when (requestCode) {
             REQ_CALL -> {
                 val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-                val pendingPhone = pendingCallPhone
-                val pendingEmergency = pendingCallEmergencyId
+                val phone = pendingCallPhone
+                val emergencyId = pendingCallEmergencyId
                 pendingCallPhone = null
                 pendingCallEmergencyId = null
-                if (granted && !pendingPhone.isNullOrBlank()) {
-                    startDirectCall(pendingPhone, pendingEmergency)
+                if (granted && !phone.isNullOrBlank()) {
+                    startDirectCall(phone, emergencyId)
                 } else if (!granted) {
-                    Toast.makeText(
-                        this,
-                        "CERCA necesita permiso para llamar automáticamente al contacto del SOS.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this, "CERCA necesita permiso de Teléfono para realizar la llamada del SOS.", Toast.LENGTH_LONG).show()
                 }
             }
             REQ_LOCATION -> {
@@ -319,18 +315,23 @@ class WebAppActivity : AppCompatActivity() {
 
     inner class CercaNativeBridge {
         @JavascriptInterface
-        fun directCall(phone: String) { runOnUiThread { startDirectCall(phone, null) } }
+        fun directCall(phone: String) {
+            runOnUiThread { startDirectCall(phone, null) }
+        }
 
         @JavascriptInterface
         fun syncSession(accessToken: String) {
             val clean = accessToken.trim()
             if (clean.isBlank()) return
             currentAccessToken = clean
-            NativePushRegistrar.saveAccessToken(applicationContext, clean)
+            try { NativePushRegistrar.saveAccessToken(applicationContext, clean) } catch (_: Throwable) {}
             nativeHandler.post { checkEmergencyNatively() }
         }
 
         @JavascriptInterface
         fun isNativeAndroid(): Boolean = true
+
+        @JavascriptInterface
+        fun nativeVersion(): String = BuildConfig.VERSION_NAME
     }
 }

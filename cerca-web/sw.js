@@ -1,4 +1,4 @@
-const CACHE='cerca-web-v28';
+const CACHE='cerca-web-v29';
 const STATIC=['/','/index.html','/styles.css','/app.js','/contact-role-fix.js','/notification-flow-fix.js','/network-invite-cleanup.js','/notification-permission.js','/web-push-fix.js','/emergency-runtime-fix.js','/android-auto-call-watchdog.js','/pwa.js','/manifest.webmanifest','/icon.svg'];
 
 self.addEventListener('install',e=>{

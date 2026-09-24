@@ -10,9 +10,9 @@ android {
         applicationId = "com.help.seguridad"
         minSdk = 26
         targetSdk = 36
-        versionCode = 51
+        versionCode = 52
         // Validación legacy del workflow: versionCode = 9
-        versionName = "9.1.8"
+        versionName = "9.1.9"
         buildConfigField("boolean", "HEALTH_FEATURES", "false")
         buildConfigField("boolean", "PLAY_STORE_DISTRIBUTION", "true")
         // Compatibilidad legacy del workflow: versionName = "7.0"

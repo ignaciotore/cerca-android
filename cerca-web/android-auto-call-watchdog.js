@@ -27,8 +27,8 @@
     try{return /Android/i.test(navigator.userAgent||'')}catch{return false}
   }
 
-  function hasBridge(){
-    try{return !!window.CercaNative&&typeof window.CercaNative.directCall==='function'}catch{return false}
+  function isNativeContainer(){
+    try{return /CERCA-Native-Android\/[^\s]+/i.test(navigator.userAgent||'')||window.__CERCA_NATIVE_ANDROID__===true||!!window.CercaNative}catch{return false}
   }
 
   function localPhone(){
@@ -55,24 +55,14 @@
 
   async function phoneForCall(){return localPhone()||await backendPhone()}
 
-  function markConfirmed(key){
-    if(!key)return;
-    confirmedKey=key;
-    busy=false;
-  }
-
   function dispatchNativeCall(phone){
-    // Dentro de la app Android instalada SIEMPRE usamos primero el bridge nativo.
-    // Antes se priorizaba el deep link por detectar Android y el WebView nunca
-    // llegaba a CercaNative.directCall(), por eso el SOS quedaba activo sin llamar.
     try{
-      if(hasBridge()){
-        window.CercaNative.directCall(phone);
+      if(isNativeContainer()&&window.CercaNative){
+        window.CercaNative.directCall(String(phone));
         return true;
       }
     }catch{}
 
-    // Fallback sólo para navegador/PWA Android: abre la app nativa instalada.
     try{
       if(isAndroid()){
         window.location.href='cerca://call?phone='+encodeURIComponent(phone);
@@ -83,10 +73,10 @@
   }
 
   async function trigger(e){
-    if(!isAndroid()&&!hasBridge())return;
+    if(!isAndroid()&&!isNativeContainer())return;
     const key=emergencyKey(e);
     if(!key||key===confirmedKey)return;
-    if(Date.now()-lastAttemptAt<4500)return;
+    if(Date.now()-lastAttemptAt<3500)return;
     lastAttemptAt=Date.now();
     busy=true;
 
@@ -99,9 +89,9 @@
     }
 
     setTimeout(()=>{
-      if(document.visibilityState==='hidden')markConfirmed(key);
-      else busy=false;
-    },2200);
+      if(document.visibilityState==='hidden')confirmedKey=key;
+      busy=false;
+    },1800);
   }
 
   async function tick(){
@@ -113,8 +103,8 @@
   }
 
   setInterval(tick,700);
-  window.addEventListener('focus',()=>setTimeout(tick,250));
+  window.addEventListener('focus',()=>setTimeout(tick,200));
   document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState==='visible')setTimeout(tick,300);
+    if(document.visibilityState==='visible')setTimeout(tick,250);
   });
 })();

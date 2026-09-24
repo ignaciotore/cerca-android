@@ -19,14 +19,21 @@ object NativePushRegistrar {
             .edit()
             .putString(ACCESS_TOKEN, clean)
             .apply()
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-            registerToken(context.applicationContext, token)
-        }
+        requestFirebaseTokenSafely(context.applicationContext)
     }
 
     fun registerLatest(context: Context) {
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-            registerToken(context.applicationContext, token)
+        requestFirebaseTokenSafely(context.applicationContext)
+    }
+
+    private fun requestFirebaseTokenSafely(context: Context) {
+        try {
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token -> registerToken(context, token) }
+                .addOnFailureListener { /* Web Push sigue disponible; no cerramos CERCA */ }
+        } catch (_: Throwable) {
+            // Algunas compilaciones no tienen FirebaseApp nativo inicializado.
+            // CERCA debe abrir igual: las alertas web siguen funcionando.
         }
     }
 
@@ -55,13 +62,9 @@ object NativePushRegistrar {
                 val body = JSONObject().put("token", fcmToken).toString().toByteArray(Charsets.UTF_8)
                 connection.outputStream.use { it.write(body) }
                 val code = connection.responseCode
-                if (code in 200..299) {
-                    connection.inputStream?.close()
-                } else {
-                    connection.errorStream?.close()
-                }
-            } catch (_: Exception) {
-                // Se reintenta en el próximo arranque/focus o cuando Firebase renueve el token.
+                if (code in 200..299) connection.inputStream?.close() else connection.errorStream?.close()
+            } catch (_: Throwable) {
+                // Nunca hacemos fallar la app por el registro push.
             } finally {
                 connection?.disconnect()
             }

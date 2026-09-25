@@ -8,7 +8,18 @@
       <key>WFWorkflowActionIdentifier</key>
       <string>com.apple.mobilephone.call</string>
       <key>WFWorkflowActionParameters</key>
-      <dict/>
+      <dict>
+        <key>WFInput</key>
+        <dict>
+          <key>Value</key>
+          <dict>
+            <key>Type</key>
+            <string>ExtensionInput</string>
+          </dict>
+          <key>WFSerializationType</key>
+          <string>WFTextTokenAttachment</string>
+        </dict>
+      </dict>
     </dict>
   </array>
   <key>WFWorkflowClientVersion</key>
@@ -33,6 +44,8 @@
   <array/>
   <key>WFWorkflowTypes</key>
   <array/>
+  <key>WFWorkflowHasShortcutInputVariables</key>
+  <true/>
   <key>WFWorkflowHasOutputFallback</key>
   <false/>
   <key>WFWorkflowImportQuestions</key>

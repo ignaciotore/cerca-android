@@ -1,11 +1,19 @@
 (()=>{
-  const IOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const IOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
   let promptOpen=false;
+  let started=false;
+
+  window.__CERCA_NOTIFICATION_ONBOARDING_PENDING__=IOS&&standalone();
 
   async function registerIfPossible(){
     if(!('Notification' in window)||Notification.permission!=='granted')return;
     try{if(typeof tryWebPush==='function')await tryWebPush()}catch{}
+  }
+
+  function finish(state){
+    window.__CERCA_NOTIFICATION_ONBOARDING_PENDING__=false;
+    try{window.dispatchEvent(new CustomEvent('cerca-notifications-ready',{detail:{state}}))}catch{}
   }
 
   function closePrompt(w){
@@ -14,54 +22,56 @@
   }
 
   function blockedMessage(){
-    if(IOS)return'Las notificaciones están bloqueadas. Abrí Ajustes > Notificaciones > CERCA y habilitalas para recibir alertas de emergencia.';
+    if(IOS)return'Las notificaciones están desactivadas para CERCA. Podés habilitarlas más adelante desde Ajustes > Notificaciones > CERCA.';
     return'Las notificaciones están bloqueadas. Habilitalas desde los ajustes de notificaciones de CERCA en tu teléfono.';
   }
 
   function showPermissionPrompt(){
-    if(promptOpen||!('Notification' in window))return;
-    if(Notification.permission==='granted'){registerIfPossible();return}
+    if(started||promptOpen)return;
+
+    // En iPhone, antes de instalar CERCA como app no pedimos notificaciones ni mostramos otro popup.
+    if(IOS&&!standalone()){finish('browser');return}
+    if(!('Notification' in window)){finish('unsupported');return}
+
+    if(Notification.permission==='granted'){
+      started=true;
+      registerIfPossible().finally(()=>finish('granted'));
+      return;
+    }
+
     if(typeof modal!=='function')return;
+    started=true;
     promptOpen=true;
-
-    const needsInstall=IOS&&!standalone();
     const denied=Notification.permission==='denied';
-    const title=denied?'Activá las notificaciones de CERCA':'No te pierdas una alerta CERCA';
-    const text=needsInstall
-      ?'En iPhone, las alertas funcionan cuando CERCA está agregada a la pantalla de inicio. Primero instalala y después podremos activar las notificaciones.'
-      :denied
-        ?blockedMessage()
-        :'Necesitamos permiso para avisarte cuando alguien de tu Red CERCA active un SOS, incluso con el teléfono bloqueado o mientras usás otra app.';
-    const primary=needsInstall?'CÓMO INSTALAR':denied?'ENTENDIDO':'ACTIVAR NOTIFICACIONES';
+    const title=denied?'Notificaciones desactivadas':'Activar alertas de CERCA';
+    const text=denied
+      ?blockedMessage()
+      :'Permití las notificaciones para recibir un SOS de tu Red CERCA incluso con el iPhone bloqueado.';
+    const primary=denied?'CONTINUAR':'ACTIVAR NOTIFICACIONES';
 
-    const w=modal('<h2>'+title+'</h2><p>'+text+'</p><button id="cercaNotifyPrimary" class="btn primary block">'+primary+'</button><button id="cercaNotifyLater" class="btn light block" style="margin-top:8px">Ahora no</button>');
-    const primaryBtn=w.querySelector('#cercaNotifyPrimary');
-    const later=w.querySelector('#cercaNotifyLater');
+    const w=modal('<h2>'+title+'</h2><p>'+text+'</p><button id="cercaNotifyPrimary" class="btn primary block">'+primary+'</button>');
+    const primaryBtn=w?.querySelector('#cercaNotifyPrimary');
+    if(!primaryBtn){finish('error');return}
 
-    later.onclick=()=>closePrompt(w);
     primaryBtn.onclick=async()=>{
-      if(needsInstall){
-        closePrompt(w);
-        const install=document.getElementById('installAppBtn');
-        if(install){install.click();return}
-        alert('En iPhone: abrí CERCA en Safari, tocá Compartir y elegí “Agregar a pantalla de inicio”.');
-        return;
-      }
-      if(denied){closePrompt(w);alert(blockedMessage());return}
+      if(denied){closePrompt(w);finish('denied');return}
       try{
         const p=await Notification.requestPermission();
-        if(p==='granted'){
-          await registerIfPossible();
-          closePrompt(w);
-          if(typeof toast==='function')toast('Notificaciones CERCA activadas.');
-        }else{
-          closePrompt(w);
-          setTimeout(showPermissionPrompt,250);
-        }
-      }catch{
+        if(p==='granted')await registerIfPossible();
         closePrompt(w);
+        if(p==='granted'&&typeof toast==='function')toast('Notificaciones CERCA activadas.');
+        finish(p||'default');
+      }catch{
+        closePrompt(w);finish('error');
       }
     };
+  }
+
+  function maybeStart(){
+    if(started)return;
+    if(typeof S==='undefined'||!S.user)return;
+    if(window.__CERCA_LOCATION_ONBOARDING_PENDING__)return;
+    setTimeout(showPermissionPrompt,250);
   }
 
   function waitForSession(){
@@ -70,10 +80,9 @@
       tries++;
       if(typeof S!=='undefined'&&S.user){
         clearInterval(timer);
-        if(Notification.permission==='granted')registerIfPossible();
-        else setTimeout(showPermissionPrompt,350);
+        maybeStart();
       }else if(tries>1200){
-        clearInterval(timer);
+        clearInterval(timer);finish('timeout');
       }
     },500);
   }
@@ -81,7 +90,8 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',waitForSession);
   else waitForSession();
 
+  window.addEventListener('cerca-location-ready',()=>maybeStart());
   window.addEventListener('focus',()=>{
-    if(typeof S!=='undefined'&&S.user&&Notification.permission==='granted')registerIfPossible();
+    if(typeof S!=='undefined'&&S.user&&'Notification'in window&&Notification.permission==='granted')registerIfPossible();
   });
 })();

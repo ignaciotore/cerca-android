@@ -31,23 +31,25 @@
     e.preventDefault();promptEvent=e;install.style.display='inline-flex';install.textContent='Instalar CERCA';
   });
 
-  function showIosInstall(){
-    if(typeof modal!=='function'){
-      alert('En iPhone: tocá Compartir, elegí “Agregar a Inicio”, dejá activado “Abrir como app web” y tocá Agregar.');
-      return;
-    }
-    const html='<h2>Instalar CERCA</h2>'+
-      '<p>Queda instalada en tu iPhone como una app, con su ícono y apertura independiente de Safari.</p>'+
-      '<div class="statusBox" style="text-align:left;margin:14px 0">'+
-      '<div><b>1.</b> Tocá <b>Compartir</b> en Safari.</div>'+
-      '<div style="margin-top:8px"><b>2.</b> Elegí <b>Agregar a Inicio</b>.</div>'+
-      '<div style="margin-top:8px"><b>3.</b> Dejá activado <b>Abrir como app web</b> y tocá <b>Agregar</b>.</div>'+
-      '</div>'+
-      '<p class="mini">Apple exige esta confirmación una sola vez. Después abrís CERCA desde el ícono y la app te pide los permisos necesarios.</p>'+
-      '<button id="iosInstallOk" class="btn primary block">Entendido</button>';
-    const w=modal(html);
-    const ok=w?.querySelector('#iosInstallOk');
-    if(ok)ok.onclick=()=>w.remove();
+  function guideIosInstall(){
+    // iOS no expone una API web para disparar "Agregar a Inicio". Evitamos un modal
+    // y convertimos el propio botón en una instrucción breve y no bloqueante.
+    install.textContent='⋯ → Compartir → Agregar a Inicio';
+    install.setAttribute('aria-label','En Safari: abrí el menú de página, tocá Compartir y luego Agregar a Inicio');
+    install.style.maxWidth='260px';
+    install.style.whiteSpace='normal';
+    install.style.lineHeight='1.15';
+    install.style.textAlign='center';
+    install.style.height='auto';
+    install.style.minHeight='44px';
+    install.style.padding='8px 12px';
+    setTimeout(()=>{
+      if(!standalone()){
+        install.textContent='Instalar CERCA';
+        install.removeAttribute('aria-label');
+        install.style.maxWidth='';install.style.whiteSpace='';install.style.lineHeight='';install.style.textAlign='';install.style.height='';install.style.minHeight='';install.style.padding='';
+      }
+    },12000);
   }
 
   if(ios){
@@ -62,7 +64,7 @@
       promptEvent=null;
       return;
     }
-    if(ios){showIosInstall();return}
+    if(ios){guideIosInstall();return}
     alert('Abrí el menú del navegador y elegí “Instalar app” o “Agregar a pantalla principal”.');
   };
 

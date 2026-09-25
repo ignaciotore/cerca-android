@@ -43,7 +43,9 @@
       .cerca-install-primary{width:100%;border:0;border-radius:16px;padding:16px;background:#2d7774;color:#fff;font-size:19px;font-weight:800;min-height:56px}
       .cerca-install-help{font-size:16px;line-height:1.35;margin:16px 0 0;padding:14px;background:#f5f8f7;border-radius:14px;color:#314b48;display:none}
       .cerca-install-close{width:100%;border:0;border-radius:14px;padding:13px 16px;background:#2d7774;color:#fff;font-size:18px;font-weight:800;min-height:52px}
-      .cerca-install-share{font-size:24px;font-weight:800;line-height:1.3;margin:6px 0 22px;padding:18px 14px;border-radius:16px;background:#f5f8f7;border:1px solid #e5ecea}
+      .cerca-install-steps{display:grid;gap:12px;margin:6px 0 20px;text-align:left}
+      .cerca-install-step{display:flex;align-items:center;gap:12px;background:#f5f8f7;border:1px solid #e5ecea;border-radius:16px;padding:14px;font-size:18px;font-weight:700;line-height:1.25}
+      .cerca-install-num{flex:0 0 34px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#dceeed;color:#1e6b68;font-weight:800;font-size:18px}
     `;
     document.head.appendChild(style);
   }
@@ -68,14 +70,12 @@
   }
 
   function safariInstallUrl(){
-    const u=new URL(location.href);
-    u.searchParams.set('cerca_install','1');
-    return 'x-safari-https://'+u.host+u.pathname+u.search+u.hash;
+    return 'x-safari-https://'+location.host+'/instalar-cerca';
   }
 
   function showOpenInSafari(){
     const d=makeDialog('Instalar CERCA',`
-      <p class="cerca-install-text">Tocá este botón. CERCA se abre en Safari para terminar la instalación.</p>
+      <p class="cerca-install-text">Tocá el botón y seguimos en Safari.</p>
       <button class="cerca-install-primary" type="button">ABRIR EN SAFARI</button>
       <p class="cerca-install-help">Si no se abre: tocá <b>⋯</b> abajo a la derecha y elegí <b>Abrir en Safari</b>.</p>`);
     const btn=d.querySelector('.cerca-install-primary');
@@ -86,29 +86,26 @@
       addEventListener('pagehide',mark,{once:true});
       document.addEventListener('visibilitychange',()=>{if(document.hidden)left=true},{once:true});
       location.href=safariInstallUrl();
-      setTimeout(()=>{if(!left&&document.visibilityState==='visible'){help.style.display='block';btn.textContent='ABRIR EN SAFARI'}} ,1400);
+      setTimeout(()=>{if(!left&&document.visibilityState==='visible'){help.style.display='block'}} ,1400);
     };
   }
 
   function showFinishInSafari(){
-    const d=makeDialog('Último paso',`
-      <p class="cerca-install-text">En Safari, hacé esto:</p>
-      <div class="cerca-install-share">Compartir ↑<br>→ Agregar a Inicio</div>
-      <button class="cerca-install-close" type="button">Entendido</button>`);
+    const d=makeDialog('Instalá CERCA',`
+      <div class="cerca-install-steps">
+        <div class="cerca-install-step"><span class="cerca-install-num">1</span><span>Tocá <b>⋯</b> abajo a la derecha</span></div>
+        <div class="cerca-install-step"><span class="cerca-install-num">2</span><span>Tocá <b>Compartir</b></span></div>
+        <div class="cerca-install-step"><span class="cerca-install-num">3</span><span>Tocá <b>Agregar a Inicio</b></span></div>
+      </div>
+      <button class="cerca-install-close" type="button">Listo</button>`);
     d.querySelector('.cerca-install-close').onclick=closeIosInstallGuide;
-    try{
-      const u=new URL(location.href);
-      u.searchParams.delete('cerca_install');
-      history.replaceState(null,'',u.pathname+u.search+u.hash);
-    }catch{}
+    try{history.replaceState(null,'','/')}catch{}
   }
 
   if(ios){
     install.style.display='inline-flex';
     install.textContent='Instalar CERCA';
-    try{
-      if(new URL(location.href).searchParams.get('cerca_install')==='1')setTimeout(showFinishInSafari,350);
-    }catch{}
+    if(location.pathname==='/instalar-cerca')setTimeout(showFinishInSafari,350);
   }
 
   install.onclick=async()=>{

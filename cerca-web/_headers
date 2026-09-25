@@ -15,6 +15,9 @@
 /emergency-runtime-fix.js
   Cache-Control: no-cache, no-store, must-revalidate
 
+/location-onboarding.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
 /ios-shortcut-call.js
   Cache-Control: no-cache, no-store, must-revalidate
 

@@ -5,7 +5,7 @@
   if(!ios||nativeAndroid)return;
 
   let done=false;
-  let onboardingShown=false;
+  let requested=false;
   window.__CERCA_LOCATION_ONBOARDING_PENDING__=true;
 
   function finish(state){
@@ -15,125 +15,68 @@
     try{window.dispatchEvent(new CustomEvent('cerca-location-ready',{detail:{state}}))}catch{}
   }
 
-  function closeCurrentModal(){
-    try{document.querySelectorAll('.modalWrap').forEach(x=>x.remove())}catch{}
-  }
-
   function loggedInHomeReady(){
     try{return typeof S!=='undefined'&&!!S.user&&!!document.getElementById('sosBtn')}catch{return false}
   }
 
-  function requestLocation(onSuccess){
+  // En iPhone el SOS nunca debe quedar bloqueado porque la ubicación esté denegada.
+  // Si iOS no entrega posición, la emergencia se crea igual y el tracking volverá a intentar después.
+  function installSafeGetPos(){
+    try{
+      if(typeof getPos!=='function'||getPos.__cercaIosSafe)return false;
+      const original=getPos;
+      const wrapped=async function(){
+        try{return await original()}
+        catch(e){
+          try{if(typeof toast==='function')toast('SOS se activará sin ubicación hasta que iPhone la permita.','error')}catch{}
+          return {latitude:null,longitude:null,__cercaNoLocation:true};
+        }
+      };
+      wrapped.__cercaIosSafe=true;
+      getPos=wrapped;
+      return true;
+    }catch{return false}
+  }
+
+  function requestNativePermission(){
+    if(requested||done||!loggedInHomeReady())return;
+    requested=true;
     if(!navigator.geolocation){finish('unsupported');return}
+
+    // Esta llamada es la que hace aparecer el aviso nativo de iOS cuando el sitio está en “Preguntar”.
     navigator.geolocation.getCurrentPosition(
       ()=>{
-        closeCurrentModal();
-        if(typeof toast==='function')toast('Ubicación activada.');
-        if(typeof onSuccess==='function')onSuccess();
+        try{if(typeof toast==='function')toast('Ubicación activada.')}catch{}
         finish('granted');
       },
       e=>{
-        if(e?.code===1)showDenied();
-        else showUnavailable();
+        // Si Safari ya recordaba “No permitir”, iOS no deja que una web fuerce otro diálogo.
+        // No frenamos CERCA: seguimos con SOS y llamada, simplemente sin coordenadas hasta que se habilite.
+        try{
+          if(typeof toast==='function'){
+            toast(e?.code===1?'CERCA seguirá funcionando; por ahora iPhone no comparte la ubicación.':'No pude obtener la ubicación ahora. CERCA seguirá funcionando.','error');
+          }
+        }catch{}
+        finish(e?.code===1?'denied':'unavailable');
       },
-      {enableHighAccuracy:true,timeout:15000,maximumAge:300000}
+      {enableHighAccuracy:true,timeout:12000,maximumAge:120000}
     );
-  }
-
-  function showIntro(){
-    if(done||!loggedInHomeReady())return;
-    if(document.querySelector('.modalWrap')){setTimeout(showIntro,400);return}
-    onboardingShown=true;
-    const html='<h2>Permitir ubicación</h2>'+
-      '<p>CERCA necesita tu ubicación para enviar el lugar de la emergencia cuando pedís ayuda.</p>'+
-      '<div class="statusBox" style="text-align:left;margin:14px 0">Tocá <b>Permitir ubicación</b>. El iPhone te va a preguntar si querés darle acceso a CERCA/Safari.</div>'+
-      '<button id="cercaLocationAllow" class="btn primary block">Permitir ubicación</button>'+
-      '<button id="cercaLocationLater" class="btn light block" style="margin-top:8px">Ahora no</button>';
-    const w=typeof modal==='function'?modal(html):null;
-    if(!w)return;
-    const allow=w.querySelector('#cercaLocationAllow');
-    const later=w.querySelector('#cercaLocationLater');
-    if(allow)allow.onclick=()=>requestLocation();
-    if(later)later.onclick=()=>{w.remove();finish('skipped')};
-  }
-
-  function showDenied(){
-    closeCurrentModal();
-    if(done)return;
-    const html='<h2>Ubicación bloqueada en Safari</h2>'+
-      '<p>El iPhone ya tiene la ubicación de este sitio en <b>No permitir</b>, por eso CERCA no puede volver a mostrarte el botón “Sí”.</p>'+
-      '<div class="statusBox" style="text-align:left;margin:14px 0">'+
-      '<div><b>1.</b> En Safari, tocá el <b>menú de página</b> a la izquierda de la barra de direcciones.</div>'+
-      '<div style="margin-top:8px"><b>2.</b> Entrá en <b>Configuración del sitio web</b>.</div>'+
-      '<div style="margin-top:8px"><b>3.</b> En <b>Ubicación</b>, elegí <b>Permitir</b>.</div>'+
-      '<div style="margin-top:8px"><b>4.</b> Volvé a CERCA y tocá el botón de abajo.</div>'+
-      '</div>'+
-      '<p class="mini">Si no aparece Ubicación ahí: Ajustes → Apps → Safari → Ubicación → elegí Preguntar o Permitir.</p>'+
-      '<button id="cercaLocationDone" class="btn primary block">Ya lo habilité</button>'+
-      '<button id="cercaLocationLater" class="btn light block" style="margin-top:8px">Ahora no</button>';
-    const w=typeof modal==='function'?modal(html):null;
-    if(!w)return;
-    const retry=w.querySelector('#cercaLocationDone');
-    const later=w.querySelector('#cercaLocationLater');
-    if(retry)retry.onclick=()=>requestLocation();
-    if(later)later.onclick=()=>{w.remove();finish('skipped')};
-  }
-
-  function showUnavailable(){
-    closeCurrentModal();
-    if(done)return;
-    const html='<h2>No pude obtener tu ubicación</h2>'+
-      '<p>Revisá que los Servicios de ubicación del iPhone estén activados y volvé a intentar.</p>'+
-      '<button id="cercaLocationRetry" class="btn primary block">Volver a intentar</button>'+
-      '<button id="cercaLocationLater" class="btn light block" style="margin-top:8px">Ahora no</button>';
-    const w=typeof modal==='function'?modal(html):null;
-    if(!w)return;
-    const retry=w.querySelector('#cercaLocationRetry');
-    const later=w.querySelector('#cercaLocationLater');
-    if(retry)retry.onclick=()=>requestLocation();
-    if(later)later.onclick=()=>{w.remove();finish('skipped')};
-  }
-
-  async function permissionState(){
-    try{
-      if(!navigator.permissions?.query)return 'unknown';
-      const p=await navigator.permissions.query({name:'geolocation'});
-      return p?.state||'unknown';
-    }catch{return 'unknown'}
-  }
-
-  async function start(){
-    if(done||onboardingShown||!loggedInHomeReady())return;
-    const state=await permissionState();
-    if(state==='granted'){
-      requestLocation();
-      return;
-    }
-    if(state==='denied'){
-      onboardingShown=true;
-      showDenied();
-      return;
-    }
-    showIntro();
   }
 
   let tries=0;
   const wait=setInterval(()=>{
     tries++;
-    start();
-    if(done||tries>180)clearInterval(wait);
-  },300);
+    installSafeGetPos();
+    if(loggedInHomeReady()){
+      clearInterval(wait);
+      // Pedimos el permiso apenas termina de abrir CERCA. En un iPhone que todavía está en “Preguntar”
+      // aparece directamente el popup nativo de Apple.
+      setTimeout(requestNativePermission,250);
+    }else if(tries>180){
+      clearInterval(wait);finish('timeout');
+    }
+  },250);
 
-  addEventListener('focus',()=>{
-    if(done)return;
-    if(onboardingShown&&document.querySelector('.modalWrap'))return;
-    onboardingShown=false;
-    setTimeout(start,250);
-  });
-  addEventListener('pageshow',()=>{
-    if(done)return;
-    if(onboardingShown&&document.querySelector('.modalWrap'))return;
-    onboardingShown=false;
-    setTimeout(start,250);
-  });
+  addEventListener('pageshow',()=>{installSafeGetPos();if(!requested)setTimeout(requestNativePermission,250)});
+  addEventListener('focus',()=>{installSafeGetPos()});
 })();
